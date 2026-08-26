@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(222 47% 11%);
+
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(222 47% 11%);
+
+  --color-primary: hsl(217 91% 48%);
+  --color-primary-foreground: hsl(0 0% 100%);
+
+  --color-secondary: hsl(220 14% 96%);
+  --color-secondary-foreground: hsl(222 47% 11%);
+
+  --color-muted: hsl(220 14% 95%);
+  --color-muted-foreground: hsl(215 16% 47%);
+
+  --color-accent: hsl(217 91% 48%);
+  --color-accent-foreground: hsl(0 0% 100%);
+
+  --color-destructive: hsl(0 72% 55%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+
+  --color-success: hsl(142 71% 45%);
+  --color-warning: hsl(38 92% 55%);
+
+  --color-border: hsl(220 13% 87%);
+  --color-input: hsl(220 13% 87%);
+  --color-ring: hsl(217 91% 60%);
+
+  --font-sans: 'Space Grotesk', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --animate-slide-up: slide-up 0.5s ease-out;
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+html {
+  overscroll-behavior: none;
+  background: white;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* Utility classes */
+.glass {
+  background: hsl(0 0% 100% / 0.7);
+  backdrop-filter: blur(24px);
+  border: 1px solid hsl(220 13% 87% / 0.6);
+}
+
+.gradient-text {
+  background: linear-gradient(to right, hsl(221 83% 28%), hsl(217 91% 52%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, hsl(221 83% 28%), hsl(217 91% 52%));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Container utility */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 4rem;
+  padding-right: 4rem;
+}
+
+/* Remove browser print headers/footers, keep consistent page margins */
+@media print {
+  @page {
+    margin: 2cm 0 0 0;
+  }
+}

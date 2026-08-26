@@ -1,0 +1,101 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EscrowStatus {
+  CREATED
+  SELLER_ACCEPTED
+  SELLER_REJECTED
+  FUNDED
+  CANCELLED
+}
+
+enum MilestoneStatus {
+  PENDING
+  SUBMITTED
+  DISPUTED
+  ESCALATED
+  PAID
+  REFUNDED
+  RESOLVED
+}
+
+model Escrow {
+  id             String        @id @db.VarChar(42)
+  buyer          String        @db.VarChar(42)
+  seller         String        @db.VarChar(42)
+  token          String        @db.VarChar(42)
+  totalAmount    String        @db.VarChar(78)
+  milestoneCount Int
+  metadataHash   String?       @db.VarChar(66)
+  title          String?       @db.VarChar(200)
+  description    String?       @db.VarChar(2000)
+  txHash         String?       @db.VarChar(66)
+  status         EscrowStatus  @default(CREATED)
+  fundedTxHash   String?       @db.VarChar(66)
+  fundedAt               DateTime?
+  sellerAcceptedAt       DateTime?
+  createdAt              DateTime      @default(now())
+  correctionWindowDays   Int?
+  autoApprovalDays       Int?
+  disputeTimeoutDays     Int?
+  milestones     Milestone[]
+
+  @@index([buyer])
+  @@index([seller])
+  @@index([metadataHash])
+}
+
+model Milestone {
+  id                String          @id @default(cuid())
+  escrowAddress     String          @db.VarChar(42)
+  milestoneIndex    Int
+  amount            String          @db.VarChar(78)
+  status            MilestoneStatus @default(PENDING)
+  deliveryReference String?         @db.VarChar(1000)
+  submittedAt       DateTime?
+  paidAt            DateTime?
+  disputeReason     String?   @db.VarChar(2000)
+  disputeOpenedAt   DateTime?
+  disputeOpenedBy   String?   @db.VarChar(42)
+  isEscalated          Boolean   @default(false)
+  sellerAward          String?   @db.VarChar(78)
+  buyerAward           String?   @db.VarChar(78)
+  disputeEscalatedAt   DateTime?
+  disputeEscalatedBy   String?   @db.VarChar(42)
+  escalationReason     String?   @db.VarChar(500)
+
+  escrow Escrow @relation(fields: [escrowAddress], references: [id])
+
+  @@unique([escrowAddress, milestoneIndex])
+  @@index([escrowAddress])
+}
+
+model User {
+  id              String    @id @default(cuid())
+  address         String    @unique @db.VarChar(42)
+  companyName     String    @db.VarChar(200)
+  orgNumber       String    @db.VarChar(20)
+  email           String    @db.VarChar(200)
+  createdAt       DateTime  @default(now())
+  termsAcceptedAt        DateTime?
+  paymentTermsAcceptedAt DateTime?
+}
+
+model ProjectMetadata {
+  id           String  @id @default(cuid())
+  metadataHash String  @unique @db.VarChar(66)
+  title        String  @db.VarChar(200)
+  description  String? @db.VarChar(2000)
+}

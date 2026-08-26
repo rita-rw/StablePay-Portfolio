@@ -1,0 +1,3 @@
+ALTER TABLE "Milestone" ADD COLUMN IF NOT EXISTS "buyerAward" VARCHAR(78);
+ALTER TABLE "Milestone" ADD COLUMN IF NOT EXISTS "disputeEscalatedAt" TIMESTAMP(3);
+ALTER TABLE "Milestone" ADD COLUMN IF NOT EXISTS "disputeEscalatedBy" VARCHAR(42);

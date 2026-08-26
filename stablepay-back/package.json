@@ -1,0 +1,41 @@
+{
+  "name": "stablepay-back",
+  "version": "1.0.0",
+  "description": "Backend API for StablePay, an escrow platform on Base",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon src/index.ts",
+    "build": "prisma generate && tsc",
+    "start": "prisma migrate deploy && node dist/src/index.js"
+  },
+  "keywords": [],
+  "author": "Rita (https://github.com/rita-rw)",
+  "license": "MIT",
+  "engines": { "node": ">=20.19" },
+  "type": "commonjs",
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.4.1",
+    "@prisma/client": "^7.4.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
+    "nodemailer": "^8.0.2",
+    "pg": "^8.18.0",
+    "prisma": "^7.4.1",
+    "sanitize-html": "^2.17.1",
+    "viem": "^2.46.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.3.0",
+    "@types/nodemailer": "^7.0.11",
+    "@types/pg": "^8.16.0",
+    "@types/sanitize-html": "^2.16.1",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

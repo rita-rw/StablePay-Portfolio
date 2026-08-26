@@ -1,0 +1,57 @@
+import { z } from "zod";
+import { getAddress } from "viem";
+import {
+  MAX_TITLE,
+  MAX_DESCRIPTION,
+  MAX_DELIVERY_REF,
+  MAX_DISPUTE_REASON,
+} from "../utils/constants";
+
+function zodAddress(message: string) {
+  return z
+    .string(message)
+    .regex(/^0x[a-fA-F0-9]{40}$/, message)
+    .transform((v) => getAddress(v));
+}
+
+export const SeedProjectBody = z.object({
+  escrowAddress: zodAddress("Invalid escrowAddress"),
+  metadataHash: z.string().optional(),
+  title: z
+    .string()
+    .max(MAX_TITLE, `title must be at most ${MAX_TITLE} characters`)
+    .optional(),
+  description: z
+    .string()
+    .max(MAX_DESCRIPTION, `description must be at most ${MAX_DESCRIPTION} characters`)
+    .optional(),
+  txHash: z.string().optional(),
+});
+
+export const MetadataBody = z.object({
+  title: z
+    .string("title is required")
+    .min(1, "title is required")
+    .max(MAX_TITLE, `title must be at most ${MAX_TITLE} characters`),
+  description: z
+    .string()
+    .max(MAX_DESCRIPTION, `description must be at most ${MAX_DESCRIPTION} characters`)
+    .optional(),
+  metadataHash: z
+    .string("Valid metadataHash (bytes32) is required")
+    .regex(/^0x[a-fA-F0-9]{64}$/, "Valid metadataHash (bytes32) is required"),
+});
+
+export const DeliveryBody = z.object({
+  deliveryReference: z
+    .string("deliveryReference is required")
+    .min(1, "deliveryReference is required")
+    .max(MAX_DELIVERY_REF, `deliveryReference must be at most ${MAX_DELIVERY_REF} characters`),
+});
+
+export const DisputeBody = z.object({
+  disputeReason: z
+    .string("disputeReason is required")
+    .min(1, "disputeReason is required")
+    .max(MAX_DISPUTE_REASON, `disputeReason must be at most ${MAX_DISPUTE_REASON} characters`),
+});

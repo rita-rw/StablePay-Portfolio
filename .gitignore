@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Editor settings
+.cursor/
+.vscode/
+.claude/
+.private/
+.stablepay-docs/
+
+CLAUDE.md
+AGENTS.md
