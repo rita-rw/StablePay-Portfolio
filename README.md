@@ -93,8 +93,8 @@ npm run dev                 # http://localhost:3001
 **2. Frontend**
 ```bash
 cd stablepay-front
+cp .env.example .env        # fill in the values — see comments inside the file
 npm install
-# set NEXT_PUBLIC_API_URL, NEXT_PUBLIC_FACTORY_ADDRESS, etc. — see stablepay-front/README.md
 npm run dev                 # http://localhost:3000
 ```
 
