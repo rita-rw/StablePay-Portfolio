@@ -1,4 +1,4 @@
-import { MILESTONE_STATUS_MAP, CORRECTION_WINDOW_MS } from "./constants";
+import { MILESTONE_STATUS_MAP } from "./constants";
 
 export function shortAddr(addr: string): string {
   return `${addr.slice(0, 6)} ... ${addr.slice(-4)}`;
@@ -127,14 +127,4 @@ export function statusBadge(status: string): { label: string; color: string } {
 
 export function getMilestoneStatus(statusCode: number): string {
   return MILESTONE_STATUS_MAP[statusCode] ?? "PENDING";
-}
-
-export function isResolvable(disputeOpenedAt: string | null | undefined): boolean {
-  if (!disputeOpenedAt) return false;
-  return Date.now() - new Date(disputeOpenedAt).getTime() >= CORRECTION_WINDOW_MS;
-}
-
-export function isTimeoutReady(disputeOpenedAt: string | null | undefined): boolean {
-  if (!disputeOpenedAt) return false;
-  return Date.now() - new Date(disputeOpenedAt).getTime() >= 30 * 24 * 60 * 60 * 1000;
 }
