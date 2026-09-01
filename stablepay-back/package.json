@@ -4,6 +4,7 @@
   "description": "Backend API for StablePay, an escrow platform on Base",
   "main": "index.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "nodemon src/index.ts",
     "build": "prisma generate && tsc",
     "start": "prisma migrate deploy && node dist/src/index.js"
