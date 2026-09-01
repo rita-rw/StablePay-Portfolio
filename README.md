@@ -84,6 +84,7 @@ cd stablepay-back
 docker-compose up -d        # starts PostgreSQL
 cp .env.example .env        # fill in the values — see comments inside the file
 npm install
+npx prisma generate
 npx prisma migrate dev
 npm run dev                 # http://localhost:3001
 ```
