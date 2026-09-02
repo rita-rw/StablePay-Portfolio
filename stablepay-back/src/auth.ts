@@ -15,7 +15,7 @@ export interface AuthRequest extends Request {
  * Requires headers:
  *   x-wallet-address  — the Ethereum address claiming to sign
  *   x-signature       — signature of x-message
- *   x-message         — must be "StablePay auth: {unixTimestampMs}"
+ *   x-message         — must be "StablePay auth | chain:{id} | address:{addr} | ts:{unixTimestampMs}"
  *
  * On success, attaches req.signerAddress (checksummed) and calls next().
  * On failure, returns 401.
@@ -36,32 +36,24 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
   }
 
   // Validate message format and timestamp freshness
-  // New format: "StablePay auth | chain:{id} | address:{addr} | ts:{timestamp}"
-  // Old format (backward compat, remove later): "StablePay auth: {timestamp}"
-  const newMatch = message.match(/^StablePay auth \| chain:(\w+) \| address:(0x[0-9a-fA-F]+) \| ts:(\d+)$/);
-  const oldMatch = !newMatch ? message.match(/^StablePay auth: (\d+)$/) : null;
+  // Format: "StablePay auth | chain:{id} | address:{addr} | ts:{timestamp}"
+  const match = message.match(/^StablePay auth \| chain:(\w+) \| address:(0x[0-9a-fA-F]+) \| ts:(\d+)$/);
 
-  if (!newMatch && !oldMatch) {
+  if (!match) {
     res.status(401).json({ error: "Invalid message format" });
     return;
   }
 
-  let timestamp: number;
-
-  if (newMatch) {
-    const [, chainId, msgAddress, ts] = newMatch;
-    if (chainId !== EXPECTED_CHAIN_ID) {
-      res.status(401).json({ error: `Invalid chain ID. Expected ${EXPECTED_CHAIN_ID}` });
-      return;
-    }
-    if (getAddress(msgAddress) !== getAddress(claimed)) {
-      res.status(401).json({ error: "Message address does not match x-wallet-address" });
-      return;
-    }
-    timestamp = parseInt(ts, 10);
-  } else {
-    timestamp = parseInt(oldMatch![1], 10);
+  const [, chainId, msgAddress, ts] = match;
+  if (chainId !== EXPECTED_CHAIN_ID) {
+    res.status(401).json({ error: `Invalid chain ID. Expected ${EXPECTED_CHAIN_ID}` });
+    return;
   }
+  if (getAddress(msgAddress) !== getAddress(claimed)) {
+    res.status(401).json({ error: "Message address does not match x-wallet-address" });
+    return;
+  }
+  const timestamp = parseInt(ts, 10);
 
   const age = Date.now() - timestamp;
   if (age < 0 || age > MAX_AGE_MS) {
@@ -102,25 +94,19 @@ export async function optionalAuth(req: AuthRequest, res: Response, next: NextFu
     return;
   }
 
-  const newMatch = message.match(/^StablePay auth \| chain:(\w+) \| address:(0x[0-9a-fA-F]+) \| ts:(\d+)$/);
-  const oldMatch = !newMatch ? message.match(/^StablePay auth: (\d+)$/) : null;
+  const match = message.match(/^StablePay auth \| chain:(\w+) \| address:(0x[0-9a-fA-F]+) \| ts:(\d+)$/);
 
-  if (!newMatch && !oldMatch) {
+  if (!match) {
     next();
     return;
   }
 
-  let timestamp: number;
-  if (newMatch) {
-    const [, chainId, msgAddress, ts] = newMatch;
-    if (chainId !== EXPECTED_CHAIN_ID || getAddress(msgAddress) !== getAddress(claimed)) {
-      next();
-      return;
-    }
-    timestamp = parseInt(ts, 10);
-  } else {
-    timestamp = parseInt(oldMatch![1], 10);
+  const [, chainId, msgAddress, ts] = match;
+  if (chainId !== EXPECTED_CHAIN_ID || getAddress(msgAddress) !== getAddress(claimed)) {
+    next();
+    return;
   }
+  const timestamp = parseInt(ts, 10);
 
   const age = Date.now() - timestamp;
   if (age < 0 || age > MAX_AGE_MS) {
