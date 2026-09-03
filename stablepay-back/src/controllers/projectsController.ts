@@ -380,15 +380,23 @@ export async function saveDelivery(req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    const milestone = await findMilestone(escrowAddress, milestoneIndex);
+    let milestone = await findMilestone(escrowAddress, milestoneIndex);
     if (!milestone) {
       res.status(404).json({ error: "Milestone not found" });
       return;
     }
 
     if (!["SUBMITTED", "DISPUTED"].includes(milestone.status)) {
-      res.status(409).json({ error: `Cannot deliver on a ${milestone.status} milestone` });
-      return;
+      // The frontend calls this right after the on-chain submit tx confirms — the
+      // listener may not have processed the MilestoneSubmitted event yet. Force a
+      // fresh on-chain read before treating this as a genuine conflict.
+      await syncSingleEscrow(escrowAddress);
+      milestone = await findMilestone(escrowAddress, milestoneIndex);
+
+      if (!milestone || !["SUBMITTED", "DISPUTED"].includes(milestone.status)) {
+        res.status(409).json({ error: `Cannot deliver on a ${milestone?.status ?? "missing"} milestone` });
+        return;
+      }
     }
 
     await updateMilestoneDelivery(escrowAddress, milestoneIndex, cleanDelivery);
@@ -424,15 +432,22 @@ export async function saveDisputeReason(req: AuthRequest, res: Response): Promis
       return;
     }
 
-    const milestone = await findMilestone(escrowAddress, milestoneIndex);
+    let milestone = await findMilestone(escrowAddress, milestoneIndex);
     if (!milestone) {
       res.status(404).json({ error: "Milestone not found" });
       return;
     }
 
     if (!["SUBMITTED", "DISPUTED"].includes(milestone.status)) {
-      res.status(409).json({ error: `Cannot dispute a ${milestone.status} milestone` });
-      return;
+      // Same race as saveDelivery: the frontend calls this right after the on-chain
+      // dispute tx confirms, before the listener may have processed the event.
+      await syncSingleEscrow(escrowAddress);
+      milestone = await findMilestone(escrowAddress, milestoneIndex);
+
+      if (!milestone || !["SUBMITTED", "DISPUTED"].includes(milestone.status)) {
+        res.status(409).json({ error: `Cannot dispute a ${milestone?.status ?? "missing"} milestone` });
+        return;
+      }
     }
 
     await updateMilestoneDisputeReason(escrowAddress, milestoneIndex, cleanReason);
