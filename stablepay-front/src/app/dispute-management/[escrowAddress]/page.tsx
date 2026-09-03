@@ -251,7 +251,14 @@ export default function AdminProjectDisputesPage() {
             const isResolved = resolvedDisputes.has(dispute.id) || ["PAID", "REFUNDED", "RESOLVED"].includes(dispute.status);
             const openedAt = backendMilestones[dispute.milestoneIndex]?.disputeOpenedAt ?? dispute.disputeOpenedAt;
             const windowMs = (correctionWindowDays ?? 7) * 24 * 60 * 60 * 1000;
-            const canResolve = openedAt ? Date.now() >= new Date(openedAt).getTime() + windowMs : false;
+            // Contract only enforces the correction window when the BUYER opened the
+            // dispute (StablePayEscrow.sol resolveDispute) — a seller-opened/escalated
+            // dispute can be resolved immediately. Default to "buyer" when unknown, to
+            // stay conservative rather than unlock early on missing data.
+            const openedByBuyer =
+              !dispute.disputeOpenedBy || !displayBuyer ||
+              dispute.disputeOpenedBy.toLowerCase() === displayBuyer.toLowerCase();
+            const canResolve = !openedByBuyer || (openedAt ? Date.now() >= new Date(openedAt).getTime() + windowMs : false);
             const isResolvingThis = activeResolveId === dispute.id;
 
             return (
