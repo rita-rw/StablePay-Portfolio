@@ -46,6 +46,9 @@ const backfillClient = createPublicClient({
 
 const FACTORY_DEPLOY_BLOCK = BigInt(process.env.FACTORY_DEPLOY_BLOCK ?? "38641491");
 const LOG_CHUNK_SIZE = 9_500n;
+// How many escrows catchUpOnChainState() syncs at once against the public RPC.
+// Higher = faster startup but bigger request bursts against the free/public RPC.
+const CATCH_UP_CONCURRENCY = 5;
 const LISTENER_HEARTBEAT_INTERVAL_MS = Number(process.env.LISTENER_HEARTBEAT_INTERVAL_MS ?? "15000");
 const LISTENER_STALE_AFTER_MS = Number(process.env.LISTENER_STALE_AFTER_MS ?? "45000");
 const LISTENER_RESTART_BASE_MS = Number(process.env.LISTENER_RESTART_BASE_MS ?? "2000");
@@ -1050,10 +1053,22 @@ async function backfillFromHistory(factoryAddress: `0x${string}`, startToken: nu
     const logs = allLogs;
     console.log(`[backfill] found ${logs.length} historical EscrowCreated events`);
 
+    let skipped = 0;
+
     for (const log of logs) {
       if (shouldAbortStartup(startToken)) {
         console.warn("[backfill] aborted by restart request");
         return;
+      }
+
+      const escrowAddress = (log.args as EscrowCreatedArgs).escrow;
+
+      // Already in the DB — catchUpOnChainState() resyncs it right after this
+      // function returns, so re-seeding here (with its per-milestone RPC reads)
+      // would just repeat work on every restart for no benefit.
+      if (knownEscrows.has(escrowAddress.toLowerCase())) {
+        skipped++;
+        continue;
       }
 
       await seedEscrowFromCreationLog(
@@ -1066,8 +1081,11 @@ async function backfillFromHistory(factoryAddress: `0x${string}`, startToken: nu
         },
       );
 
-      const escrowAddress = (log.args as EscrowCreatedArgs).escrow;
       console.log(`[backfill] seeded ${escrowAddress}`);
+    }
+
+    if (skipped > 0) {
+      console.log(`[backfill] skipped ${skipped} already-known escrows (resynced by catch-up instead)`);
     }
 
     console.log("[backfill] done");
@@ -1299,16 +1317,7 @@ async function catchUpOnChainState(startToken: number) {
   if (escrows.length === 0) return;
   console.log(`[catch-up] syncing ${escrows.length} escrows with on-chain state...`);
 
-  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-  for (const escrow of escrows) {
-    if (shouldAbortStartup(startToken)) {
-      console.warn("[catch-up] aborted by restart request");
-      return;
-    }
-
-    // Throttle to avoid hitting RPC rate limits
-    await delay(500);
+  const processEscrow = async (escrow: (typeof escrows)[number]) => {
     const address = escrow.id as `0x${string}`;
     try {
       // Use public RPC for bulk catch-up to avoid Alchemy rate limits
@@ -1373,7 +1382,7 @@ async function catchUpOnChainState(startToken: number) {
       const count = Number(milestoneCount);
       for (let i = 0; i < count; i++) {
         if (shouldAbortStartup(startToken)) {
-          console.warn("[catch-up] aborted by restart request");
+          console.warn(`[catch-up] ${address} sync stopped mid-escrow by restart request`);
           return;
         }
 
@@ -1470,6 +1479,16 @@ async function catchUpOnChainState(startToken: number) {
     } catch (err) {
       console.error(`[catch-up] failed for ${address}`, err);
     }
+  };
+
+  for (let i = 0; i < escrows.length; i += CATCH_UP_CONCURRENCY) {
+    if (shouldAbortStartup(startToken)) {
+      console.warn("[catch-up] aborted by restart request");
+      return;
+    }
+
+    const batch = escrows.slice(i, i + CATCH_UP_CONCURRENCY);
+    await Promise.all(batch.map(processEscrow));
   }
 
   console.log("[catch-up] done");
