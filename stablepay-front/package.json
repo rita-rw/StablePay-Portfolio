@@ -2,6 +2,11 @@
   "name": "stablepay-front",
   "version": "0.1.0",
   "description": "Frontend for StablePay, an escrow platform on Base",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rita-rw/StablePay-Portfolio.git",
+    "directory": "stablepay-front"
+  },
   "author": "Rita (https://github.com/rita-rw)",
   "license": "MIT",
   "private": true,

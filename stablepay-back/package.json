@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Backend API for StablePay, an escrow platform on Base",
   "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rita-rw/StablePay-Portfolio.git",
+    "directory": "stablepay-back"
+  },
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "nodemon src/index.ts",
