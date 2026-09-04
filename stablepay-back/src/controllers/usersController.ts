@@ -92,7 +92,10 @@ export async function getUser(req: AuthRequest, res: Response): Promise<void> {
       : await findPublicUserProfile(parsedAddr);
 
     if (!user) {
-      res.status(404).json({ error: "User not found" });
+      // Not an error: the frontend polls this on every page load to check whether
+      // a connected wallet is registered. "No profile" is a normal answer, so
+      // return 200 + null rather than a 404 the browser console logs in red.
+      res.json(null);
       return;
     }
     res.json(user);
