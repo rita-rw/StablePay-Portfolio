@@ -49,10 +49,54 @@ const LOG_CHUNK_SIZE = 9_500n;
 // How many escrows catchUpOnChainState() syncs at once against the public RPC.
 // Higher = faster startup but bigger request bursts against the free/public RPC.
 const CATCH_UP_CONCURRENCY = 5;
+// Pause between catch-up batches to give the free public RPC room to breathe.
+const CATCH_UP_BATCH_DELAY_MS = Number(process.env.CATCH_UP_BATCH_DELAY_MS ?? "500");
 const LISTENER_HEARTBEAT_INTERVAL_MS = Number(process.env.LISTENER_HEARTBEAT_INTERVAL_MS ?? "15000");
 const LISTENER_STALE_AFTER_MS = Number(process.env.LISTENER_STALE_AFTER_MS ?? "45000");
 const LISTENER_RESTART_BASE_MS = Number(process.env.LISTENER_RESTART_BASE_MS ?? "2000");
 const LISTENER_RESTART_MAX_MS = Number(process.env.LISTENER_RESTART_MAX_MS ?? "30000");
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The free public RPC (RPC_URL_FALLBACK) returns HTTP 429 / JSON-RPC -32016
+ * ("over rate limit") under load. viem wraps these several causes deep, so walk
+ * the whole error chain looking for the tell-tale status/message.
+ */
+function isRateLimitError(err: unknown): boolean {
+  let current: unknown = err;
+  for (let depth = 0; current != null && depth < 10; depth++) {
+    const e = current as {
+      status?: number;
+      details?: string;
+      shortMessage?: string;
+      message?: string;
+      cause?: unknown;
+    };
+    if (e.status === 429) return true;
+    const text = `${e.details ?? ""} ${e.shortMessage ?? ""} ${e.message ?? ""}`.toLowerCase();
+    if (text.includes("rate limit") || text.includes("-32016")) return true;
+    current = e.cause;
+  }
+  return false;
+}
+
+/**
+ * Retries `fn` while the public RPC is rate-limiting, backing off
+ * 1s, 2s, 4s, 8s, 16s. Non-rate-limit errors are rethrown immediately.
+ */
+async function withRateLimitRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 5): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRateLimitError(err) || attempt >= maxRetries) throw err;
+      const backoffMs = 1000 * 2 ** attempt;
+      console.warn(`[catch-up] rate limited on ${label}, retry ${attempt + 1}/${maxRetries} in ${backoffMs}ms`);
+      await sleep(backoffMs);
+    }
+  }
+}
 
 type EscrowCreatedArgs = {
   escrow: `0x${string}`;
@@ -1477,6 +1521,8 @@ async function catchUpOnChainState(startToken: number) {
         }
       }
     } catch (err) {
+      // Let the batch-level retry handle transient public-RPC rate limits.
+      if (isRateLimitError(err)) throw err;
       console.error(`[catch-up] failed for ${address}`, err);
     }
   };
@@ -1488,7 +1534,17 @@ async function catchUpOnChainState(startToken: number) {
     }
 
     const batch = escrows.slice(i, i + CATCH_UP_CONCURRENCY);
-    await Promise.all(batch.map(processEscrow));
+    await Promise.all(
+      batch.map((escrow) =>
+        withRateLimitRetry(() => processEscrow(escrow), escrow.id).catch((err) =>
+          console.error(`[catch-up] failed for ${escrow.id}`, err),
+        ),
+      ),
+    );
+
+    if (i + CATCH_UP_CONCURRENCY < escrows.length) {
+      await sleep(CATCH_UP_BATCH_DELAY_MS);
+    }
   }
 
   console.log("[catch-up] done");
