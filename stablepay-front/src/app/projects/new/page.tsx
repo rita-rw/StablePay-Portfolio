@@ -15,7 +15,7 @@ import { useFactoryConfig } from "@/hooks/useFactoryConfig";
 import { useUser } from "@/hooks/useUser";
 import { seedProject, saveProjectMetadata } from "@/services/projects";
 import { FACTORY_ADDRESS, USDC_ADDRESS } from "@/lib/constants";
-import { parseFactoryError } from "@/lib/formatters";
+import { parseFactoryError, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import type { MilestoneInput } from "@/types/escrow";
 import Link from "next/link";
 
@@ -108,14 +108,23 @@ export default function CreateProjectPage() {
     }
   }, [receipt, isSuccess]);
 
-  const PLATFORM_FEE_PCT = 0.025;
+  const PLATFORM_FEE_BPS = 250n;
 
-  const totalAmount = milestones.reduce((sum, m) => {
-    const val = parseFloat(m.amount);
-    return sum + (isNaN(val) ? 0 : val);
-  }, 0);
+  // Parses a milestone's typed amount straight to USDC base units (6 decimals),
+  // the same precision the contract works in — avoids the float rounding that
+  // made the fee/seller-receives preview drift from the actual on-chain split.
+  function toBaseUnits(amount: string): bigint {
+    const val = parseFloat(amount);
+    if (isNaN(val) || val <= 0) return 0n;
+    try {
+      return parseUnits(amount, 6);
+    } catch {
+      return 0n;
+    }
+  }
 
-  const totalFees = totalAmount * PLATFORM_FEE_PCT;
+  const totalAmount = milestones.reduce((sum, m) => sum + toBaseUnits(m.amount), 0n);
+  const totalFees = calcFeeBase(totalAmount, PLATFORM_FEE_BPS);
   const totalToSeller = totalAmount - totalFees;
 
   function addMilestone() {
@@ -163,7 +172,7 @@ export default function CreateProjectPage() {
       return;
     }
 
-    if (totalAmount === 0) {
+    if (totalAmount === 0n) {
       setValidationError("Total budget must be greater than 0.");
       return;
     }
@@ -346,10 +355,10 @@ export default function CreateProjectPage() {
             <label className="mb-3 block text-sm font-medium text-zinc-900">Milestones</label>
             <div className="space-y-3">
               {milestones.map((m, i) => {
-                const amt = parseFloat(m.amount);
-                const hasAmount = !isNaN(amt) && amt > 0;
-                const fee = hasAmount ? amt * PLATFORM_FEE_PCT : 0;
-                const toSeller = hasAmount ? amt - fee : 0;
+                const amountBase = toBaseUnits(m.amount);
+                const hasAmount = amountBase > 0n;
+                const fee = hasAmount ? calcFeeBase(amountBase, PLATFORM_FEE_BPS) : 0n;
+                const toSeller = hasAmount ? amountBase - fee : 0n;
                 return (
                   <div key={i} className="rounded-xl border border-zinc-300 bg-white overflow-hidden">
                     <div className="flex gap-2 p-3">
@@ -379,8 +388,8 @@ export default function CreateProjectPage() {
                     </div>
                     {hasAmount && (
                       <div className="flex items-center justify-between border-t border-zinc-200 bg-zinc-100 px-4 py-2">
-                        <span className="text-xs text-zinc-400">2.5% fee: <span className="font-medium text-zinc-500">{fee.toFixed(2)} USDC</span></span>
-                        <span className="text-xs font-semibold text-emerald-700">Seller receives: {toSeller.toFixed(2)} USDC</span>
+                        <span className="text-xs text-zinc-400">2.5% fee: <span className="font-medium text-zinc-500">{formatUSDC(fee)} USDC</span></span>
+                        <span className="text-xs font-semibold text-emerald-700">Seller receives: {formatUSDC(toSeller)} USDC</span>
                       </div>
                     )}
                   </div>
@@ -403,15 +412,15 @@ export default function CreateProjectPage() {
           <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-5 py-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-zinc-500">You pay (total)</span>
-              <span className="text-sm font-semibold text-zinc-900">{totalAmount.toFixed(2)} USDC</span>
+              <span className="text-sm font-semibold text-zinc-900">{formatUSDC(totalAmount)} USDC</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-zinc-500">Platform fee (2.5%)</span>
-              <span className="text-sm text-zinc-500">− {totalFees.toFixed(2)} USDC</span>
+              <span className="text-sm text-zinc-500">− {formatUSDC(totalFees)} USDC</span>
             </div>
             <div className="border-t border-zinc-200 pt-3 flex items-center justify-between">
               <span className="text-sm font-semibold text-zinc-900">Seller receives</span>
-              <span className="text-lg font-bold text-emerald-700">{totalToSeller.toFixed(2)} <span className="text-sm font-medium">USDC</span></span>
+              <span className="text-lg font-bold text-emerald-700">{formatUSDC(totalToSeller)} <span className="text-sm font-medium">USDC</span></span>
             </div>
           </div>
 

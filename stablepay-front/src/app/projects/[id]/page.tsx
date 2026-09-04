@@ -8,7 +8,7 @@ import { formatUnits, keccak256, toHex } from "viem";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, decodeTitle } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { authFetch } from "@/lib/authFetch";
 
 const ERC20_ABI = [
@@ -1275,7 +1275,7 @@ export default function ProjectDetailPage() {
                 )}
               </div>
               {(() => {
-                const gross = parseFloat(formatUnits(BigInt(m.amount), 6));
+                const grossBase = BigInt(m.amount);
                 const hadDispute = !!m.disputeOpenedAt;
                 const isDisputeResolved = displayStatus === "RESOLVED";
                 const isDisputePaid = displayStatus === "PAID" && hadDispute;
@@ -1285,30 +1285,36 @@ export default function ProjectDetailPage() {
 
                 const sellerAwardValue = m.sellerAward ?? onChainAwards[m.milestoneIndex];
 
-                // Compute fee amounts based on actual dispute outcome
-                const disputeFeeAmt = isDisputeOutcome ? gross * 0.01 : 0;
-                let platformFeeAmt = 0;
-                let net = 0;
-                let buyerRefund: number | null = null;
+                // Compute fee amounts based on actual dispute outcome, in USDC base
+                // units (6 decimals) using the same integer math as the contract —
+                // avoids float rounding drift (e.g. 1.00 USDC showing "0.03 USDC (2.5%)"
+                // and "0.97" instead of the real 0.025 / 0.975 split).
+                const disputeFeeBase = isDisputeOutcome ? calcFeeBase(grossBase, 100n) : 0n;
+                let platformFeeBase = 0n;
+                let netBase = 0n;
+                let buyerRefundBase: bigint | null = null;
                 let loadingAward = false;
 
                 if (isDisputeRefunded) {
                   // Buyer wins entirely: no platform fee, seller gets 0
-                  platformFeeAmt = 0;
-                  net = 0;
-                  buyerRefund = gross - disputeFeeAmt;
+                  platformFeeBase = 0n;
+                  netBase = 0n;
+                  buyerRefundBase = grossBase - disputeFeeBase;
                 } else if ((isDisputePaid || isDisputeResolved) && sellerAwardValue) {
                   // sellerAward = gross allocated to seller before 2.5% platform fee
-                  const sellerGross = parseFloat(formatUnits(BigInt(sellerAwardValue), 6));
-                  platformFeeAmt = sellerGross * 0.025;
-                  net = sellerGross - platformFeeAmt;
-                  if (isDisputeResolved) buyerRefund = Math.max(0, gross - sellerGross - disputeFeeAmt);
+                  const sellerGrossBase = BigInt(sellerAwardValue);
+                  platformFeeBase = calcFeeBase(sellerGrossBase, 250n);
+                  netBase = sellerGrossBase - platformFeeBase;
+                  if (isDisputeResolved) {
+                    const refund = grossBase - sellerGrossBase - disputeFeeBase;
+                    buyerRefundBase = refund > 0n ? refund : 0n;
+                  }
                 } else if (isDisputeOutcome && !sellerAwardValue) {
                   loadingAward = true;
                 } else {
                   // Normal PAID (approved/auto-approved)
-                  platformFeeAmt = gross * 0.025;
-                  net = gross - platformFeeAmt;
+                  platformFeeBase = calcFeeBase(grossBase, 250n);
+                  netBase = grossBase - platformFeeBase;
                 }
 
                 const paymentBreakdown = loadingAward ? (
@@ -1320,30 +1326,30 @@ export default function ProjectDetailPage() {
                     </p>
                     <div className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1">
                       <span className="text-zinc-500">Amount</span>
-                      <span className="text-zinc-800">{gross.toFixed(2)} USDC</span>
+                      <span className="text-zinc-800">{formatUSDC(grossBase)} USDC</span>
                       {isDisputeOutcome && (
                         <>
                           <span className="text-zinc-500">Dispute fee</span>
-                          <span className="text-zinc-700">{disputeFeeAmt.toFixed(2)} USDC <span className="text-zinc-400">(1%)</span></span>
+                          <span className="text-zinc-700">{formatUSDC(disputeFeeBase)} USDC <span className="text-zinc-400">(1%)</span></span>
                         </>
                       )}
-                      {platformFeeAmt > 0 && (
+                      {platformFeeBase > 0n && (
                         <>
                           <span className="text-zinc-500">Platform fee</span>
-                          <span className="text-zinc-700">{platformFeeAmt.toFixed(2)} USDC <span className="text-zinc-400">(2.5%)</span></span>
+                          <span className="text-zinc-700">{formatUSDC(platformFeeBase)} USDC <span className="text-zinc-400">(2.5%)</span></span>
                         </>
                       )}
-                      {buyerRefund !== null && buyerRefund > 0.001 && (
+                      {buyerRefundBase !== null && buyerRefundBase > 0n && (
                         <>
                           <span className="text-zinc-500">Refunded</span>
-                          <span className="text-zinc-700">{buyerRefund.toFixed(2)} USDC</span>
+                          <span className="text-zinc-700">{formatUSDC(buyerRefundBase)} USDC</span>
                         </>
                       )}
                     </div>
                     <div className="mt-2 flex items-center justify-between border-t border-zinc-200 pt-2">
                       <span className="font-medium text-zinc-700">{isPaid ? "Paid to seller" : "Seller receives"}</span>
                       <span className="font-bold text-sm text-zinc-900">
-                        {net.toFixed(2)} USDC
+                        {formatUSDC(netBase)} USDC
                       </span>
                     </div>
                   </div>

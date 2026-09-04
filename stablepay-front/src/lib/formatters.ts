@@ -4,6 +4,26 @@ export function shortAddr(addr: string): string {
   return `${addr.slice(0, 6)} ... ${addr.slice(-4)}`;
 }
 
+/**
+ * Formats a USDC amount given in base units (6 decimals) as a decimal string,
+ * showing as many decimals as needed to be exact (up to 6), never fewer than 2.
+ * Avoids the float-rounding drift of `parseFloat(formatUnits(...)).toFixed(2)`,
+ * which silently drops the sub-cent remainder USDC's 6 decimals can carry.
+ */
+export function formatUSDC(baseUnits: bigint): string {
+  const negative = baseUnits < 0n;
+  const abs = negative ? -baseUnits : baseUnits;
+  const whole = abs / 1_000_000n;
+  let frac = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  if (frac.length < 2) frac = frac.padEnd(2, "0");
+  return `${negative ? "-" : ""}${whole}.${frac}`;
+}
+
+/** Mirrors the contract's integer fee math: floor(amount * feeBps / 10000). */
+export function calcFeeBase(amountBase: bigint, feeBps: bigint): bigint {
+  return (amountBase * feeBps) / 10_000n;
+}
+
 export function decodeTitle(title: string): string {
   return title
     .replace(/&amp;/g, "&")

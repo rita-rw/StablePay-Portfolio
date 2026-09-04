@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react";
 import { Shield } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { formatUnits } from "viem";
 import { useWalletClient } from "wagmi";
 import { fetchProjectDetail } from "@/services/projects";
 import { fetchUser } from "@/services/users";
 import { BASESCAN_URL } from "@/lib/constants";
-import { decodeTitle } from "@/lib/formatters";
+import { decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import type { Milestone } from "@/types/escrow";
 
 type ReceiptEscrow = {
@@ -240,42 +239,40 @@ export default function ReceiptPage() {
 
           {/* Table rows */}
           {escrow.milestones.map((m) => {
-            const gross = parseFloat(formatUnits(BigInt(m.amount), 6));
+            // All amounts computed in USDC base units (6 decimals), the same
+            // integer math the contract uses — avoids the float-rounding drift
+            // that made this receipt's fee/net columns not add up (and not
+            // match the exact bigint sums used in the Summary below).
+            const grossBase = BigInt(m.amount);
             const hadDispute = m.disputeOpenedAt != null;
             const isResolved = m.status === "RESOLVED";
             const isRefunded = m.status === "REFUNDED";
             const isDisputePaid = m.status === "PAID" && hadDispute;
             const isPaid = m.status === "PAID" || isResolved;
-            const disputeFeeAmt = (isResolved || isRefunded || isDisputePaid) ? gross * 0.01 : 0;
+            const disputeFeeBase = (isResolved || isRefunded || isDisputePaid) ? calcFeeBase(grossBase, 100n) : 0n;
 
-            let net: number;
-            let buyerRefund: number | null = null;
-            let platformFeeDisplay: number;
+            let netBase: bigint;
+            let buyerRefundBase: bigint | null = null;
+            let platformFeeBase: bigint;
 
             if (isResolved && m.sellerAward) {
-              const awardBig = BigInt(m.sellerAward);
-              const platformFeeBig = (awardBig * BigInt(250)) / BigInt(10000);
-              net = parseFloat(formatUnits(awardBig - platformFeeBig, 6));
-              platformFeeDisplay = parseFloat(formatUnits(awardBig, 6)) * 0.025;
-              const buyerAwardVal = m.buyerAward
-                ? parseFloat(formatUnits(BigInt(m.buyerAward), 6))
-                : Math.max(0, gross - parseFloat(formatUnits(awardBig, 6)) - gross * 0.01);
-              buyerRefund = buyerAwardVal > 0.001 ? buyerAwardVal : null;
+              const awardBase = BigInt(m.sellerAward);
+              platformFeeBase = calcFeeBase(awardBase, 250n);
+              netBase = awardBase - platformFeeBase;
+              let buyerAwardBase = m.buyerAward ? BigInt(m.buyerAward) : grossBase - awardBase - disputeFeeBase;
+              if (buyerAwardBase < 0n) buyerAwardBase = 0n;
+              buyerRefundBase = buyerAwardBase > 0n ? buyerAwardBase : null;
             } else if (isDisputePaid && m.sellerAward) {
-              const awardBig = BigInt(m.sellerAward);
-              const platformFeeBig = (awardBig * BigInt(250)) / BigInt(10000);
-              net = parseFloat(formatUnits(awardBig - platformFeeBig, 6));
-              platformFeeDisplay = parseFloat(formatUnits(awardBig, 6)) * 0.025;
+              const awardBase = BigInt(m.sellerAward);
+              platformFeeBase = calcFeeBase(awardBase, 250n);
+              netBase = awardBase - platformFeeBase;
             } else if (isRefunded) {
-              const buyerAwardVal = m.buyerAward
-                ? parseFloat(formatUnits(BigInt(m.buyerAward), 6))
-                : gross - gross * 0.01;
-              buyerRefund = buyerAwardVal;
-              platformFeeDisplay = 0;
-              net = 0;
+              buyerRefundBase = m.buyerAward ? BigInt(m.buyerAward) : grossBase - disputeFeeBase;
+              platformFeeBase = 0n;
+              netBase = 0n;
             } else {
-              platformFeeDisplay = gross * 0.025;
-              net = gross - platformFeeDisplay;
+              platformFeeBase = calcFeeBase(grossBase, 250n);
+              netBase = grossBase - platformFeeBase;
             }
 
             return (
@@ -291,24 +288,24 @@ export default function ReceiptPage() {
                       {new Date(m.paidAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                     </p>
                   )}
-                  {buyerRefund !== null && buyerRefund > 0.001 && (
-                    <p className="mt-0.5 text-xs text-zinc-500">Buyer refunded: {buyerRefund.toFixed(2)} USDC</p>
+                  {buyerRefundBase !== null && buyerRefundBase > 0n && (
+                    <p className="mt-0.5 text-xs text-zinc-500">Buyer refunded: {formatUSDC(buyerRefundBase)} USDC</p>
                   )}
                 </div>
                 <div className="border-r border-zinc-200 px-3 py-3">
-                  <p className="text-sm text-zinc-900">{gross.toFixed(2)}</p>
+                  <p className="text-sm text-zinc-900">{formatUSDC(grossBase)}</p>
                   <p className="text-xs text-zinc-400">USDC</p>
                 </div>
                 <div className="border-r border-zinc-200 px-3 py-3">
                   {isPaid ? (
                     <>
-                      <p className="text-sm text-zinc-900">{platformFeeDisplay.toFixed(2)} <span className="text-xs text-zinc-400">(2.5%)</span></p>
+                      <p className="text-sm text-zinc-900">{formatUSDC(platformFeeBase)} <span className="text-xs text-zinc-400">(2.5%)</span></p>
                       {(isResolved || isDisputePaid) && (
-                        <p className="text-xs text-zinc-500">+ {disputeFeeAmt.toFixed(2)} dispute (1%)</p>
+                        <p className="text-xs text-zinc-500">+ {formatUSDC(disputeFeeBase)} dispute (1%)</p>
                       )}
                     </>
-                  ) : isRefunded && disputeFeeAmt > 0 ? (
-                    <p className="text-sm text-zinc-900">{disputeFeeAmt.toFixed(2)} <span className="text-xs text-zinc-400">dispute (1%)</span></p>
+                  ) : isRefunded && disputeFeeBase > 0n ? (
+                    <p className="text-sm text-zinc-900">{formatUSDC(disputeFeeBase)} <span className="text-xs text-zinc-400">dispute (1%)</span></p>
                   ) : (
                     <p className="text-sm text-zinc-400">—</p>
                   )}
@@ -316,7 +313,7 @@ export default function ReceiptPage() {
                 <div className="border-r border-zinc-200 px-3 py-3">
                   {isPaid ? (
                     <>
-                      <p className="text-sm font-bold text-zinc-900">{net.toFixed(2)}</p>
+                      <p className="text-sm font-bold text-zinc-900">{formatUSDC(netBase)}</p>
                       <p className="text-xs text-zinc-400">USDC</p>
                     </>
                   ) : (
@@ -343,33 +340,33 @@ export default function ReceiptPage() {
           <div className="ml-auto max-w-xs space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-zinc-600">Total Escrowed</span>
-              <span className="font-medium text-zinc-900">{parseFloat(formatUnits(totalEscrowed, 6)).toFixed(2)} USDC</span>
+              <span className="font-medium text-zinc-900">{formatUSDC(totalEscrowed)} USDC</span>
             </div>
             <div className="flex justify-between">
               <span className="text-zinc-600">Platform Fees (2.5%)</span>
-              <span className="font-medium text-zinc-900">− {parseFloat(formatUnits(platformFees, 6)).toFixed(2)} USDC</span>
+              <span className="font-medium text-zinc-900">− {formatUSDC(platformFees)} USDC</span>
             </div>
             {totalDisputeFees > BigInt(0) && (
               <div className="flex justify-between">
                 <span className="text-zinc-600">Dispute Fees (1%)</span>
-                <span className="font-medium text-zinc-900">− {parseFloat(formatUnits(totalDisputeFees, 6)).toFixed(2)} USDC</span>
+                <span className="font-medium text-zinc-900">− {formatUSDC(totalDisputeFees)} USDC</span>
               </div>
             )}
             {totalRefunded > BigInt(0) && (
               <div className="flex justify-between">
                 <span className="text-zinc-600">Refunded to Buyer</span>
-                <span className="font-medium text-zinc-900">{parseFloat(formatUnits(totalRefunded, 6)).toFixed(2)} USDC</span>
+                <span className="font-medium text-zinc-900">{formatUSDC(totalRefunded)} USDC</span>
               </div>
             )}
             {totalDisputeBuyerRefunds > BigInt(0) && (
               <div className="flex justify-between">
                 <span className="text-zinc-600">Dispute Refunds to Buyer</span>
-                <span className="font-medium text-zinc-900">{parseFloat(formatUnits(totalDisputeBuyerRefunds, 6)).toFixed(2)} USDC</span>
+                <span className="font-medium text-zinc-900">{formatUSDC(totalDisputeBuyerRefunds)} USDC</span>
               </div>
             )}
             <div className="flex justify-between border-t-2 border-zinc-400 pt-3">
               <span className="text-base font-black uppercase tracking-wide text-zinc-900">Total Paid to Seller</span>
-              <span className="text-base font-black text-zinc-900">{parseFloat(formatUnits(totalToSeller, 6)).toFixed(2)} USDC</span>
+              <span className="text-base font-black text-zinc-900">{formatUSDC(totalToSeller)} USDC</span>
             </div>
           </div>
         </div>
