@@ -9,6 +9,17 @@ import { fetchAdminDisputeDetail } from "@/services/admin";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
 import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle } from "@/lib/formatters";
 
+/** Compact "2d 3h" / "3h 10m" / "5m" style remaining-time label. */
+function formatDuration(ms: number): string {
+  const totalMinutes = Math.max(0, Math.ceil(ms / 60_000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days >= 1) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours >= 1) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
+}
+
 type OnChainDispute = {
   id: string;
   escrowAddress: string;
@@ -260,6 +271,20 @@ export default function AdminProjectDisputesPage() {
               dispute.disputeOpenedBy.toLowerCase() === displayBuyer.toLowerCase();
             const canResolve = !openedByBuyer || (openedAt ? Date.now() >= new Date(openedAt).getTime() + windowMs : false);
             const isResolvingThis = activeResolveId === dispute.id;
+            const unlockAt = openedAt ? new Date(openedAt).getTime() + windowMs : null;
+            const msUntilUnlock = unlockAt !== null ? unlockAt - Date.now() : null;
+            // Only claim "the buyer opened this" when we actually know it — canResolve
+            // defaults to locked on missing data, so the banner must stay vague then.
+            const buyerOpenedKnown = !!(
+              dispute.disputeOpenedBy &&
+              displayBuyer &&
+              dispute.disputeOpenedBy.toLowerCase() === displayBuyer.toLowerCase()
+            );
+            const lockedTitle = !canResolve
+              ? unlockAt
+                ? `Locked until ${new Date(unlockAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} — correction window still running`
+                : "Locked — waiting for the dispute's on-chain open time to sync"
+              : undefined;
 
             return (
               <div
@@ -420,11 +445,29 @@ export default function AdminProjectDisputesPage() {
 
                   return (
                     <div className="space-y-3">
+                      {!canResolve && (
+                        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+                          <p className="text-xs font-semibold text-amber-800">
+                            🔒 Resolution locked
+                            {msUntilUnlock && msUntilUnlock > 0 ? ` — ${formatDuration(msUntilUnlock)} left` : ""}
+                          </p>
+                          <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                            {buyerOpenedKnown
+                              ? `The buyer opened this dispute, so the contract enforces a ${correctionWindowDays ?? 7}-day correction window before the platform can resolve. `
+                              : `This dispute is still within its ${correctionWindowDays ?? 7}-day correction window. `}
+                            {unlockAt
+                              ? `You can resolve it from ${new Date(unlockAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}.`
+                              : `The dispute's on-chain open time hasn't synced yet — try refreshing in a moment.`}
+                          </p>
+                        </div>
+                      )}
+
                       {/* Quick outcome buttons */}
                       <div className="flex gap-2">
                         <button
                           onClick={() => setResolveModes((prev) => ({ ...prev, [dispute.id]: "all-seller" }))}
                           disabled={!canResolve}
+                          title={lockedTitle}
                           className={`flex-1 rounded-lg px-3 py-3 text-left transition-all duration-200 disabled:opacity-40 ${mode === "all-seller" ? "border-2 border-blue-600 bg-blue-600 shadow-lg" : "border-2 border-blue-400 bg-white hover:border-blue-500"}`}
                         >
                           <p className={`text-xs font-semibold mb-1.5 ${mode === "all-seller" ? "text-white" : "text-zinc-800"}`}>All to seller</p>
@@ -435,6 +478,7 @@ export default function AdminProjectDisputesPage() {
                         <button
                           onClick={() => setResolveModes((prev) => ({ ...prev, [dispute.id]: "all-buyer" }))}
                           disabled={!canResolve}
+                          title={lockedTitle}
                           className={`flex-1 rounded-lg px-3 py-3 text-left transition-all duration-200 disabled:opacity-40 ${mode === "all-buyer" ? "border-2 border-blue-600 bg-blue-600 shadow-lg" : "border-2 border-blue-400 bg-white hover:border-blue-500"}`}
                         >
                           <p className={`text-xs font-semibold mb-1.5 ${mode === "all-buyer" ? "text-white" : "text-zinc-800"}`}>All to buyer</p>
@@ -447,7 +491,8 @@ export default function AdminProjectDisputesPage() {
                       {/* Custom split — separate section, only active when selected */}
                       <div
                         onClick={() => { if (canResolve) setResolveModes((prev) => ({ ...prev, [dispute.id]: "custom" })); }}
-                        className={`rounded-lg border-2 px-3 py-2 transition-colors ${mode === "custom" ? "border-blue-600" : "border-zinc-200 cursor-pointer hover:border-zinc-400"}`}
+                        title={lockedTitle}
+                        className={`rounded-lg border-2 px-3 py-2 transition-colors ${mode === "custom" ? "border-blue-600" : canResolve ? "border-zinc-200 cursor-pointer hover:border-zinc-400" : "border-zinc-200 opacity-40"}`}
                       >
                         <p className={`text-xs font-semibold mb-1.5 ${mode === "custom" ? "text-blue-600" : "text-zinc-500"}`}>Custom split</p>
                         {mode === "custom" ? (
@@ -502,16 +547,6 @@ export default function AdminProjectDisputesPage() {
                       >
                         {isResolvePending && isResolvingThis ? "Confirm in wallet..." : isResolveConfirming && isResolvingThis ? "Waiting for confirmation..." : "Resolve dispute"}
                       </button>
-
-                      {!canResolve && (
-                        <p className="text-xs text-zinc-500">
-                          Resolve available after correction window (
-                          {openedAt
-                            ? new Date(new Date(openedAt).getTime() + windowMs).toLocaleDateString()
-                            : "..."}
-                          )
-                        </p>
-                      )}
 
                       {resolveError && isResolvingThis && (
                         <p className="text-xs text-red-500">{parseContractError(resolveError)}</p>
