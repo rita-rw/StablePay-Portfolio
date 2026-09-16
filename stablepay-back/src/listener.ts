@@ -84,6 +84,10 @@ function isRateLimitError(err: unknown): boolean {
 /**
  * Retries `fn` while the public RPC is rate-limiting, backing off
  * 1s, 2s, 4s, 8s, 16s. Non-rate-limit errors are rethrown immediately.
+ *
+ * `label` should say which startup phase and which unit is being retried
+ * (e.g. "catch-up 0x1234…" or "backfill 38641491-38650990"), since it is the
+ * only thing distinguishing the retry lines in the log.
  */
 async function withRateLimitRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 5): Promise<T> {
   for (let attempt = 0; ; attempt++) {
@@ -92,7 +96,7 @@ async function withRateLimitRetry<T>(fn: () => Promise<T>, label: string, maxRet
     } catch (err) {
       if (!isRateLimitError(err) || attempt >= maxRetries) throw err;
       const backoffMs = 1000 * 2 ** attempt;
-      console.warn(`[catch-up] rate limited on ${label}, retry ${attempt + 1}/${maxRetries} in ${backoffMs}ms`);
+      console.warn(`[rpc] rate limited on ${label}, retry ${attempt + 1}/${maxRetries} in ${backoffMs}ms`);
       await sleep(backoffMs);
     }
   }
@@ -1085,12 +1089,18 @@ async function backfillFromHistory(factoryAddress: `0x${string}`, startToken: nu
       }
 
       const end = start + LOG_CHUNK_SIZE - 1n < latestBlock ? start + LOG_CHUNK_SIZE - 1n : latestBlock;
-      const chunk = await backfillClient.getLogs({
-        address: factoryAddress,
-        event: escrowCreatedEvent,
-        fromBlock: start,
-        toBlock: end,
-      });
+      // Without the retry a single 429 would throw all the way out to the catch
+      // below, skipping the rest of the chunks and seeding nothing that run.
+      const chunk = await withRateLimitRetry(
+        () =>
+          backfillClient.getLogs({
+            address: factoryAddress,
+            event: escrowCreatedEvent,
+            fromBlock: start,
+            toBlock: end,
+          }),
+        `backfill ${start}-${end}`,
+      );
       allLogs.push(...chunk);
     }
 
@@ -1536,7 +1546,7 @@ async function catchUpOnChainState(startToken: number) {
     const batch = escrows.slice(i, i + CATCH_UP_CONCURRENCY);
     await Promise.all(
       batch.map((escrow) =>
-        withRateLimitRetry(() => processEscrow(escrow), escrow.id).catch((err) =>
+        withRateLimitRetry(() => processEscrow(escrow), `catch-up ${escrow.id}`).catch((err) =>
           console.error(`[catch-up] failed for ${escrow.id}`, err),
         ),
       ),
