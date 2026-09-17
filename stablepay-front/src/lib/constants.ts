@@ -12,3 +12,5 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL as string;
 export const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as `0x${string}`;
 export const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS as `0x${string}`;
 export const BASESCAN_URL = process.env.NEXT_PUBLIC_BASESCAN_URL ?? "https://sepolia.basescan.org";
+// Optional — falls back to Base Sepolia's shared public RPC (sepolia.base.org) when unset.
+export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || undefined;

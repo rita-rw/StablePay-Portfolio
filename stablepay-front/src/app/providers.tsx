@@ -4,13 +4,21 @@ import { RainbowKitProvider, getDefaultConfig, lightTheme } from "@rainbow-me/ra
 import { safeWallet, rainbowWallet, coinbaseWallet, metaMaskWallet, walletConnectWallet } from "@rainbow-me/rainbowkit/wallets";
 import "@rainbow-me/rainbowkit/styles.css";
 import { WagmiProvider } from "wagmi";
+import { http } from "viem";
 import { baseSepolia } from "wagmi/chains";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
+import { RPC_URL } from "@/lib/constants";
 
 const config = getDefaultConfig({
   appName: "StablePay",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
   chains: [baseSepolia],
+  // Own RPC (falls back to the shared public sepolia.base.org when unset) —
+  // otherwise every contract read in the UI hits the same free, rate-limited
+  // endpoint the backend already has its own Alchemy key for.
+  transports: {
+    [baseSepolia.id]: http(RPC_URL),
+  },
   // Explicit wallet list instead of RainbowKit's default: its default swaps
   // in the "Base" connector (Coinbase Smart Wallet / ERC-4337), which pulls
   // in @coinbase/cdp-sdk and breaks the build (see git history for the
