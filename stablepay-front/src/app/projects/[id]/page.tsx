@@ -7,7 +7,7 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { formatUnits, keccak256, toHex } from "viem";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
-import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL } from "@/lib/constants";
+import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { authFetch } from "@/lib/authFetch";
 
@@ -962,7 +962,17 @@ export default function ProjectDetailPage() {
         </div>
         <div className="mt-4 pt-4 border-t border-zinc-100">
           <p className="text-xs font-medium text-zinc-500 mb-1">Escrow Address</p>
-          <p className="font-mono text-xs text-zinc-700">{escrowAddress}</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="font-mono text-xs text-zinc-700">{escrowAddress}</p>
+            <a
+              href={`${BASESCAN_URL}/address/${escrowAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-900"
+            >
+              View on Basescan ↗
+            </a>
+          </div>
         </div>
       </div>
 
