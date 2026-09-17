@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import Header from "@/components/shared/Header";
+import Footer from "@/components/shared/Footer";
 
 export const metadata: Metadata = {
   title: "StablePay",
@@ -25,6 +26,7 @@ export default function RootLayout({
         <Providers>
           <Header />
           {children}
+          <Footer />
         </Providers>
       </body>
     </html>
