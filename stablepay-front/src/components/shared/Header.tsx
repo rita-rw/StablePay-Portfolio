@@ -2,12 +2,22 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Shield } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
-import { PLATFORM_ADDRESS } from "@/lib/constants";
+import { PLATFORM_ADDRESS, USDC_ADDRESS } from "@/lib/constants";
 import { usePathname } from "next/navigation";
+
+const ERC20_BALANCE_ABI = [
+  {
+    type: "function",
+    name: "balanceOf",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+] as const;
 
 export default function Header() {
   const { address, isConnected } = useAccount();
@@ -16,6 +26,13 @@ export default function Header() {
   useEffect(() => setMounted(true), []);
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());
   const showNav = mounted && isConnected && (isRegistered || isPlatform);
+  const { data: usdcBalance } = useReadContract({
+    address: USDC_ADDRESS,
+    abi: ERC20_BALANCE_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: mounted && isConnected && !!address },
+  });
   const pathname = usePathname();
   const isLanding = pathname === "/" || pathname === "/faq" || pathname === "/register" || pathname.startsWith("/projects") || pathname.startsWith("/dispute-management") || pathname.startsWith("/admin-settings");
 
@@ -72,7 +89,13 @@ export default function Header() {
               Admin
             </span>
           )}
-          <ConnectButton.Custom>
+          <div className="flex items-center">
+            {mounted && isConnected && usdcBalance !== undefined && (
+              <span className="hidden h-9 items-center whitespace-nowrap rounded-l-lg border-2 border-r-0 border-primary px-4 text-sm font-semibold text-primary sm:inline-flex">
+                {(Number(usdcBalance) / 1_000_000).toFixed(2)} USDC
+              </span>
+            )}
+            <ConnectButton.Custom>
   {({ account, chain, openAccountModal, openConnectModal, openChainModal, mounted: rkMounted }) => {
     const ready = rkMounted && mounted;
     const connected = ready && account && chain;
@@ -103,7 +126,9 @@ export default function Header() {
     return (
       <button
         onClick={openAccountModal}
-        className="h-9 px-4 rounded-lg text-sm font-semibold text-white transition-all hover:brightness-110"
+        className={`h-9 px-4 rounded-lg text-sm font-semibold text-white transition-all hover:brightness-110 ${
+          usdcBalance !== undefined ? "sm:rounded-l-none sm:rounded-r-lg" : ""
+        }`}
         style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
       >
         {account.displayName}
@@ -111,7 +136,8 @@ export default function Header() {
     );
   }}
 </ConnectButton.Custom>
-                  </div>
+          </div>
+        </div>
       </div>
     </header>
   );
