@@ -6,13 +6,13 @@ import {EscrowFactory} from "../src/EscrowFactory.sol";
 
 /**
  * @title DeployStablePayEscrow
- * @notice Deploy-script för StablePay-fabriken.
- *         Blockerar mainnet-deploys, deployer fabriken, godkänner USDC om adressen
- *         finns i .env, och loggar en sammanfattning.
+ * @notice Deploy script for the StablePay factory.
+ *         Blocks mainnet deploys, deploys the factory, approves USDC if the
+ *         address is set in .env, and logs a summary.
  */
 contract DeployStablePayEscrow is Script {
     function run() external {
-        // Säkerhetsspärr: förhindra deploy till Ethereum mainnet (1) och Base mainnet (8453)
+        // Safety guard: prevent deploying to Ethereum mainnet (1) or Base mainnet (8453)
         uint256 chainId = block.chainid;
         require(chainId != 1 && chainId != 8453, "Mainnet deploy blocked - use a testnet");
 
@@ -22,7 +22,7 @@ contract DeployStablePayEscrow is Script {
 
         EscrowFactory factory = new EscrowFactory(platform);
 
-        // Om USDC_ADDRESS är satt i .env, godkänn den direkt vid deploy
+        // If USDC_ADDRESS is set in .env, approve it right at deploy time
         address usdc = vm.envOr("USDC_ADDRESS", address(0));
         if (usdc != address(0)) {
             factory.approveToken(usdc);
@@ -30,7 +30,7 @@ contract DeployStablePayEscrow is Script {
 
         vm.stopBroadcast();
 
-        // Deployment-sammanfattning
+        // Deployment summary
         console.log("=== StablePay Deployment Summary ===");
         console.log("Chain ID:          ", chainId);
         console.log("Platform:          ", platform);

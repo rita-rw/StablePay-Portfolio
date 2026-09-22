@@ -120,9 +120,9 @@ contract EscrowFactoryTest is Test {
         assertEq(token.balanceOf(buyer), buyerAward);
     }
 
-    // ============ Finding #7: RESOLVED-status efter tvist ============
+    // ============ Finding #7: RESOLVED status after a dispute ============
 
-    /// @dev Om båda parter får pengar → status ska vara RESOLVED (inte PAID/REFUNDED).
+    /// @dev If both parties get money → status should be RESOLVED (not PAID/REFUNDED).
     function test_ResolveDispute_SplitAward_StatusIsResolved() public {
         uint256 amount = 1000 ether;
         StablePayEscrow escrow = _createDisputedEscrow(amount);
@@ -139,7 +139,7 @@ contract EscrowFactoryTest is Test {
         assertEq(uint256(status), uint256(StablePayEscrow.MilestoneStatus.RESOLVED));
     }
 
-    /// @dev Om seller får allt → status ska vara PAID (leverans godkänd via tvist).
+    /// @dev If the seller gets everything → status should be PAID (delivery approved via dispute).
     function test_ResolveDispute_SellerGetsAll_StatusIsPaid() public {
         uint256 amount = 1000 ether;
         StablePayEscrow escrow = _createDisputedEscrow(amount);
@@ -155,7 +155,7 @@ contract EscrowFactoryTest is Test {
         assertEq(uint256(status), uint256(StablePayEscrow.MilestoneStatus.PAID));
     }
 
-    /// @dev Om buyer får allt → status ska vara REFUNDED.
+    /// @dev If the buyer gets everything → status should be REFUNDED.
     function test_ResolveDispute_BuyerGetsAll_StatusIsRefunded() public {
         uint256 amount = 1000 ether;
         StablePayEscrow escrow = _createDisputedEscrow(amount);
@@ -170,16 +170,16 @@ contract EscrowFactoryTest is Test {
 }
 
 /**
- * @dev Audit Finding #1 (Critical): "Funds locked forever" (pengar kan bli låsta för alltid)
+ * @dev Audit Finding #1 (Critical): "Funds locked forever"
  *
- * Mål: säkerställ att köparen kan avbryta och få tillbaka kvarvarande pengar när:
- * - escrow aldrig blev finansierad, eller
- * - escrow är finansierad men inget aktivt arbete finns (inga SUBMITTED/DISPUTED-milestones).
+ * Goal: ensure the buyer can cancel and get back the remaining funds when:
+ * - the escrow was never funded, or
+ * - the escrow is funded but no active work exists (no SUBMITTED/DISPUTED milestones).
  *
- * Regler:
- * - Om NÅGON milestone är SUBMITTED eller DISPUTED måste avbryt revert:a (arbete är aktivt).
- * - Om vissa milestones redan är PAID ska endast återstående PENDING-milestones återbetalas.
- * - Efter avbryt måste fund() och submitMilestone() revert:a för att escrow inte ska kunna "öppnas" igen.
+ * Rules:
+ * - If ANY milestone is SUBMITTED or DISPUTED, cancel must revert (work is active).
+ * - If some milestones are already PAID, only the remaining PENDING milestones get refunded.
+ * - After cancelling, fund() and submitMilestone() must revert so the escrow can't be "reopened".
  */
 contract CancelEscrowTest is Test {
     EscrowFactory public factory;
@@ -198,14 +198,14 @@ contract CancelEscrowTest is Test {
     }
 
     function _createEscrow(uint256[] memory amounts) internal returns (StablePayEscrow) {
-        // Köparen skapar ett escrow via fabriken (speglar normal användning)
+        // The buyer creates an escrow via the factory (mirrors normal usage)
         vm.prank(buyer);
         address escrowAddr = factory.createEscrow(seller, address(token), amounts, keccak256("meta"), 1000);
         return StablePayEscrow(escrowAddr);
     }
 
     function _fundEscrow(StablePayEscrow escrow, uint256 amount) internal {
-        // Hjälpfunktion: mint -> approve -> fund (köparen sätter in totalbeloppet)
+        // Helper: mint -> approve -> fund (the buyer deposits the total amount)
         vm.prank(seller);
         escrow.acceptProject();
 
@@ -217,7 +217,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_CancelUnfundedEscrow() public {
-        // Ofinansierad escrow: avbryt ska lyckas och bara sätta cancelled=true.
+        // Unfunded escrow: cancel should succeed and just set cancelled=true.
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 500 ether;
         amounts[1] = 500 ether;
@@ -233,7 +233,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_CancelFundedEscrow_AllPending() public {
-        // Finansierad escrow + alla milestones fortfarande PENDING → full återbetalning till köparen.
+        // Funded escrow + all milestones still PENDING → full refund to the buyer.
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 500 ether;
         amounts[1] = 500 ether;
@@ -258,7 +258,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_CancelFundedEscrow_OneSubmitted_Reverts() public {
-        // Om någon milestone är SUBMITTED måste avbryt revert:a (aktivt arbete finns).
+        // If any milestone is SUBMITTED, cancel must revert (active work exists).
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 500 ether;
         amounts[1] = 500 ether;
@@ -276,7 +276,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_CancelFundedEscrow_OneDisputed_Reverts() public {
-        // Om någon milestone är DISPUTED måste avbryt revert:a (aktivt arbete finns).
+        // If any milestone is DISPUTED, cancel must revert (active work exists).
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 500 ether;
         amounts[1] = 500 ether;
@@ -297,7 +297,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_CancelFundedEscrow_OnePaid_RefundsRemaining() public {
-        // Om vissa milestones redan är PAID ska bara återstående PENDING-milestones återbetalas.
+        // If some milestones are already PAID, only the remaining PENDING milestones get refunded.
         uint256[] memory amounts = new uint256[](3);
         amounts[0] = 300 ether;
         amounts[1] = 400 ether;
@@ -338,7 +338,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_CancelEscrow_NonBuyer_Reverts() public {
-        // Endast BUYER får avbryta. Seller/platform ska revert:a.
+        // Only BUYER may cancel. Seller/platform should revert.
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1000 ether;
 
@@ -354,7 +354,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_CancelEscrow_AlreadyCancelled_Reverts() public {
-        // Att avbryta två gånger ska revert:a (ej idempotent i denna design).
+        // Cancelling twice should revert (not idempotent by design).
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1000 ether;
 
@@ -369,7 +369,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_FundAfterCancel_Reverts() public {
-        // Skydd: efter avbryt ska köparen inte kunna finansiera escrow.
+        // Protection: after cancelling, the buyer shouldn't be able to fund the escrow.
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1000 ether;
 
@@ -387,7 +387,7 @@ contract CancelEscrowTest is Test {
     }
 
     function test_SubmitMilestoneAfterCancel_Reverts() public {
-        // Skydd: efter avbryt ska säljaren inte kunna skicka in milestones.
+        // Protection: after cancelling, the seller shouldn't be able to submit milestones.
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1000 ether;
 
@@ -701,13 +701,12 @@ contract AutoApprovalFactoryTest is Test {
 
 /**
  * @dev Audit Finding #4 (High): "Factory tracking data inaccessible"
- *      (Fabrikens tracking-data går inte att läsa utifrån)
  *
- * Problemet: fabriken sparar alla escrows i interna variabler (_allEscrows,
- * _escrowsByBuyer, _escrowsBySeller), men utan publika getters kan varken
- * backenden eller frontenden fråga "vilka escrows har den här köparen?"
+ * Problem: the factory stores all escrows in internal variables (_allEscrows,
+ * _escrowsByBuyer, _escrowsBySeller), but without public getters neither the
+ * backend nor the frontend can ask "which escrows does this buyer have?"
  *
- * Lösning: 4 nya view-funktioner:
+ * Solution: 4 new view functions:
  *   - getEscrowsByBuyer(address)  → address[]
  *   - getEscrowsBySeller(address) → address[]
  *   - getAllEscrows()             → address[]
@@ -720,8 +719,8 @@ contract FactoryGettersTest is Test {
     address public platform = address(1);
     address public buyer = address(2);
     address public seller = address(3);
-    // Vi behöver en extra köpare/säljare för att testa att getters
-    // returnerar rätt data per address (inte blandar ihop dem).
+    // We need an extra buyer/seller to test that getters
+    // return the right data per address (don't mix them up).
     address public buyer2 = address(4);
     address public seller2 = address(5);
 
@@ -733,9 +732,9 @@ contract FactoryGettersTest is Test {
         factory.approveToken(address(token));
     }
 
-    /// @dev Hjälpfunktion: skapa ett escrow med 1 milestone (1000 ether).
-    ///      Vi kan ange vilken buyer och seller vi vill — användbart för att
-    ///      testa att getters filtrerar rätt per address.
+    /// @dev Helper: create an escrow with 1 milestone (1000 ether).
+    ///      We can specify whichever buyer and seller we want — useful for
+    ///      testing that getters filter correctly per address.
     function _createEscrowAs(address _buyer, address _seller) internal returns (address) {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1000 ether;
@@ -747,7 +746,7 @@ contract FactoryGettersTest is Test {
     // ============ getEscrowsByBuyer ============
 
     function test_GetEscrowsByBuyer_ReturnsCorrectEscrows() public {
-        // Skapa 2 escrows med samma buyer → getEscrowsByBuyer ska returnera båda.
+        // Create 2 escrows with the same buyer → getEscrowsByBuyer should return both.
         address escrow1 = _createEscrowAs(buyer, seller);
         address escrow2 = _createEscrowAs(buyer, seller2);
 
@@ -761,7 +760,7 @@ contract FactoryGettersTest is Test {
     // ============ getEscrowsBySeller ============
 
     function test_GetEscrowsBySeller_ReturnsCorrectEscrows() public {
-        // Skapa 2 escrows med samma seller → getEscrowsBySeller ska returnera båda.
+        // Create 2 escrows with the same seller → getEscrowsBySeller should return both.
         address escrow1 = _createEscrowAs(buyer, seller);
         address escrow2 = _createEscrowAs(buyer2, seller);
 
@@ -775,7 +774,7 @@ contract FactoryGettersTest is Test {
     // ============ getAllEscrows ============
 
     function test_GetAllEscrows_ReturnsAll() public {
-        // Skapa 3 escrows (olika buyers) → getAllEscrows ska returnera alla 3.
+        // Create 3 escrows (different buyers) → getAllEscrows should return all 3.
         address escrow1 = _createEscrowAs(buyer, seller);
         address escrow2 = _createEscrowAs(buyer2, seller);
         address escrow3 = _createEscrowAs(buyer, seller2);
@@ -791,7 +790,7 @@ contract FactoryGettersTest is Test {
     // ============ getEscrowCount ============
 
     function test_GetEscrowCount_MatchesCreatedEscrows() public {
-        // Skapa 2 escrows → getEscrowCount ska returnera 2.
+        // Create 2 escrows → getEscrowCount should return 2.
         assertEq(factory.getEscrowCount(), 0);
 
         _createEscrowAs(buyer, seller);
@@ -803,10 +802,10 @@ contract FactoryGettersTest is Test {
 }
 
 /**
- * @dev Audit Finding #5 + #6: Factory input-valideringar
+ * @dev Audit Finding #5 + #6: Factory input validations
  *
- * #5 (Medium): seller kan vara address(0) → pengar bränns.
- * #6 (Medium): inget tak på antal milestones → gas-attack möjlig.
+ * #5 (Medium): seller can be address(0) → funds get burned.
+ * #6 (Medium): no cap on the number of milestones → possible gas attack.
  */
 contract FactoryValidationsTest is Test {
     EscrowFactory public factory;
@@ -827,7 +826,7 @@ contract FactoryValidationsTest is Test {
     // ============ Finding #5: seller == address(0) ============
 
     function test_CreateEscrow_SellerZeroAddress_Reverts() public {
-        // Seller är address(0) → ska revert:a så att pengar inte bränns.
+        // Seller is address(0) → should revert so funds don't get burned.
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1000 ether;
 
@@ -836,10 +835,10 @@ contract FactoryValidationsTest is Test {
         factory.createEscrow(address(0), address(token), amounts, keccak256("meta"), 1000);
     }
 
-    // ============ Finding #6: för många milestones ============
+    // ============ Finding #6: too many milestones ============
 
     function test_CreateEscrow_TooManyMilestones_Reverts() public {
-        // 51 milestones (över MAX_MILESTONES = 50) → ska revert:a.
+        // 51 milestones (over MAX_MILESTONES = 50) → should revert.
         uint256[] memory amounts = new uint256[](51);
         for (uint256 i = 0; i < 51; i++) {
             amounts[i] = 100 ether;
@@ -852,9 +851,9 @@ contract FactoryValidationsTest is Test {
 }
 
 /**
- * @dev Frontrunning-skydd: köparen anger maxFeeBps när de skapar ett escrow.
- *      Om plattformens avgift har höjts sedan köparen laddade sidan ska
- *      createEscrow() reverta istället för att ta en avgift köparen aldrig godkände.
+ * @dev Frontrunning protection: the buyer specifies maxFeeBps when creating an escrow.
+ *      If the platform fee has been raised since the buyer loaded the page,
+ *      createEscrow() should revert instead of charging a fee the buyer never approved.
  */
 contract FeeProtectionTest is Test {
     EscrowFactory public factory;
@@ -872,8 +871,8 @@ contract FeeProtectionTest is Test {
         factory.approveToken(address(token));
     }
 
-    /// @dev Plattformen höjer avgiften till 5% (500 bps) men köparen accepterar max 2.5% (250 bps).
-    ///      createEscrow ska reverta med FeeTooHigh().
+    /// @dev The platform raises the fee to 5% (500 bps) but the buyer accepts max 2.5% (250 bps).
+    ///      createEscrow should revert with FeeTooHigh().
     function test_CreateEscrow_FeeExceedsMax_Reverts() public {
         vm.prank(platform);
         factory.setPlatformFeeBps(500); // 5%
@@ -886,8 +885,8 @@ contract FeeProtectionTest is Test {
         factory.createEscrow(seller, address(token), amounts, keccak256("meta"), 250);
     }
 
-    /// @dev Avgiften är 2.5% (250 bps) och köparen accepterar max 5% (500 bps).
-    ///      createEscrow ska lyckas utan problem.
+    /// @dev The fee is 2.5% (250 bps) and the buyer accepts max 5% (500 bps).
+    ///      createEscrow should succeed without issue.
     function test_CreateEscrow_FeeWithinMax_Succeeds() public {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1000 ether;
@@ -1195,8 +1194,8 @@ contract DisputeTimeoutFactoryTest is Test {
 /**
  * @dev Person B: Resubmit during dispute + correction window
  *
- * När köparen öppnar en dispute får säljaren 7 dagar att leverera korrigerat arbete.
- * Plattformen kan inte resolva förrän fönstret gått ut.
+ * When the buyer opens a dispute, the seller gets 7 days to deliver corrected work.
+ * The platform can't resolve it until the window has passed.
  */
 contract ResubmitDuringDisputeTest is Test {
     EscrowFactory public factory;
@@ -1218,7 +1217,7 @@ contract ResubmitDuringDisputeTest is Test {
         vm.stopPrank();
     }
 
-    /// @dev Hjälp: skapa escrow där köparen öppnat dispute
+    /// @dev Helper: create an escrow where the buyer opened the dispute
     function _createBuyerDisputedEscrow() internal returns (StablePayEscrow) {
         uint256[] memory milestones = new uint256[](1);
         milestones[0] = MILESTONE_AMOUNT;
@@ -1245,7 +1244,7 @@ contract ResubmitDuringDisputeTest is Test {
         return escrow;
     }
 
-    /// @dev Hjälp: skapa escrow där säljaren öppnat dispute
+    /// @dev Helper: create an escrow where the seller opened the dispute
     function _createSellerDisputedEscrow() internal returns (StablePayEscrow) {
         uint256[] memory milestones = new uint256[](1);
         milestones[0] = MILESTONE_AMOUNT;
