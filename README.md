@@ -108,3 +108,10 @@ Full environment variable lists and per-service details: [`stablepay-back/README
 ## License
 
 [MIT](LICENSE)
+
+---
+
+## Contact
+
+Rita Wildrot
+[rita.wildrot@gmail.com](mailto:rita.wildrot@gmail.com) · [LinkedIn](https://www.linkedin.com/in/rita-wildrot-8137a7133/) · [GitHub](https://github.com/rita-rw)
