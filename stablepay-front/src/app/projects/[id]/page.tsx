@@ -1321,6 +1321,12 @@ export default function ProjectDetailPage() {
                   }
                 } else if (isDisputeOutcome && !sellerAwardValue) {
                   loadingAward = true;
+                } else if (displayStatus === "REFUNDED") {
+                  // Plain cancellation (cancelEscrow, no dispute involved): buyer gets
+                  // the full milestone amount back, no platform fee, seller gets nothing.
+                  platformFeeBase = 0n;
+                  netBase = 0n;
+                  buyerRefundBase = grossBase;
                 } else {
                   // Normal PAID (approved/auto-approved)
                   platformFeeBase = calcFeeBase(grossBase, 250n);

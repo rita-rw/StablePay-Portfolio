@@ -90,14 +90,15 @@ export default function ReceiptPage() {
   const totalRefunded = escrow.milestones.reduce((sum, m) => {
     const amt = BigInt(m.amount);
     if (m.status === "REFUNDED") {
-      return sum + amt - (amt * BigInt(100)) / BigInt(10000);
+      // Only dispute-driven refunds (buyer wins a dispute) have the 1% dispute
+      // fee deducted — a plain cancelEscrow() refund returns the full amount.
+      const hadDispute = m.disputeOpenedAt != null;
+      return sum + (hadDispute ? amt - (amt * BigInt(100)) / BigInt(10000) : amt);
     }
     return sum;
   }, BigInt(0));
 
-  const totalEscrowed = escrow.milestones
-    .filter((m) => m.status === "PAID" || m.status === "RESOLVED")
-    .reduce((sum, m) => sum + BigInt(m.amount), BigInt(0));
+  const totalEscrowed = escrow.milestones.reduce((sum, m) => sum + BigInt(m.amount), BigInt(0));
 
   const platformFees = escrow.milestones.reduce((sum, m) => {
     const amt = BigInt(m.amount);
@@ -116,7 +117,7 @@ export default function ReceiptPage() {
   const totalDisputeFees = escrow.milestones.reduce((sum, m) => {
     const amt = BigInt(m.amount);
     const hadDispute = m.disputeOpenedAt != null;
-    if (m.status === "RESOLVED" || m.status === "REFUNDED" || (m.status === "PAID" && hadDispute)) {
+    if (m.status === "RESOLVED" || (m.status === "REFUNDED" && hadDispute) || (m.status === "PAID" && hadDispute)) {
       return sum + (amt * BigInt(100)) / BigInt(10000);
     }
     return sum;
@@ -138,6 +139,13 @@ export default function ReceiptPage() {
   }, BigInt(0));
 
   const receiptRef = escrow.id.slice(2, 10).toUpperCase();
+
+  const latestPaidAt = escrow.milestones.reduce<string | null>((latest, m) => {
+    if (!m.paidAt) return latest;
+    if (!latest || new Date(m.paidAt) > new Date(latest)) return m.paidAt;
+    return latest;
+  }, null);
+  const receiptDate = latestPaidAt ?? escrow.createdAt;
 
   return (
     <div className="min-h-screen bg-zinc-100 px-4 py-10 print:bg-white print:p-0">
@@ -163,12 +171,17 @@ export default function ReceiptPage() {
         {/* Header */}
         <div className="border-b-2 border-zinc-400 bg-zinc-200 px-8 pt-6 pb-6 print:border-zinc-400 [print-color-adjust:exact]">
           {/* Branding */}
-          <div className="mb-5 flex items-center gap-2.5 border-b border-zinc-300 pb-5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg [print-color-adjust:exact]" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.45)" }}>
-              <Shield className="h-5 w-5 text-white" />
+          <div className="mb-5 flex items-center justify-between gap-2.5 border-b border-zinc-300 pb-5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg [print-color-adjust:exact]" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.45)" }}>
+                <Shield className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-sm font-bold tracking-widest uppercase text-zinc-700">StablePay</span>
             </div>
-            <span className="text-sm font-bold tracking-widest uppercase text-zinc-700">StablePay</span>
-            <span className="ml-auto text-xs text-zinc-400 tracking-wide">On-chain escrow · Base (L2 Ethereum)</span>
+            <p className="text-sm text-zinc-500">
+              <span className="text-xs font-semibold uppercase tracking-widest">Reference</span>{" "}
+              <span className="font-mono font-bold text-zinc-900">#{receiptRef}</span>
+            </p>
           </div>
           <div className="flex items-start justify-between">
             <div>
@@ -176,9 +189,11 @@ export default function ReceiptPage() {
               <p className="mt-1 text-sm text-zinc-600">{escrow.title ? decodeTitle(escrow.title) : "Untitled Project"}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Reference</p>
-              <p className="mt-0.5 font-mono text-lg font-bold text-zinc-900">#{receiptRef}</p>
-              <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">Date</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Date</p>
+              <p className="mt-0.5 text-sm text-zinc-600">
+                {new Date(receiptDate).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}
+              </p>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">Project Started</p>
               <p className="mt-0.5 text-sm text-zinc-600">
                 {new Date(escrow.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}
               </p>
@@ -249,7 +264,7 @@ export default function ReceiptPage() {
             const isRefunded = m.status === "REFUNDED";
             const isDisputePaid = m.status === "PAID" && hadDispute;
             const isPaid = m.status === "PAID" || isResolved;
-            const disputeFeeBase = (isResolved || isRefunded || isDisputePaid) ? calcFeeBase(grossBase, 100n) : 0n;
+            const disputeFeeBase = (isResolved || (isRefunded && hadDispute) || isDisputePaid) ? calcFeeBase(grossBase, 100n) : 0n;
 
             let netBase: bigint;
             let buyerRefundBase: bigint | null = null;
@@ -284,7 +299,7 @@ export default function ReceiptPage() {
                     <p className="mt-0.5 text-xs text-zinc-500 truncate max-w-[180px]">{m.deliveryReference}</p>
                   )}
                   {m.paidAt && (
-                    <p className="mt-0.5 text-xs text-zinc-400">
+                    <p className="mt-0.5 text-xs text-zinc-500">
                       {new Date(m.paidAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                     </p>
                   )}
@@ -375,7 +390,8 @@ export default function ReceiptPage() {
         <div className="border-t border-zinc-200 bg-zinc-50 px-8 py-4">
           <p className="text-xs text-zinc-400">
             This receipt is generated by StablePay — on-chain escrow on Base (L2 Ethereum).
-            All transactions are verifiable on Basescan. Document generated {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}.
+            <br />
+            All transactions are verifiable on Basescan.
           </p>
         </div>
       </div>

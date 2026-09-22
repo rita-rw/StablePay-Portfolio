@@ -24,9 +24,13 @@ async function ensureAuth(walletClient: WalletClient): Promise<void> {
   }
 
   pendingSign = (async () => {
-    const message = `StablePay auth | chain:84532 | address:${address} | ts:${Date.now()}`;
+    const ts = Date.now();
+    const message = `StablePay auth | chain:84532 | address:${address} | ts:${ts}`;
     const signature = await walletClient.signMessage({ account: walletClient.account!, message });
-    cachedAuth = { address, signature, message, expiresAt: Date.now() + CACHE_TTL_MS };
+    // expiresAt is based on the message's own ts (what the backend checks against),
+    // not on when signing finished — otherwise a slow MetaMask confirm makes the
+    // frontend think the cache is fresh while the backend already sees it as expired.
+    cachedAuth = { address, signature, message, expiresAt: ts + CACHE_TTL_MS };
   })();
 
   try {
