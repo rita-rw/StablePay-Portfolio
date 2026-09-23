@@ -1555,7 +1555,7 @@ export default function ProjectDetailPage() {
                         <p className="text-zinc-800">Buyer accepted delivery and released payment.</p>
                       </div>
                     )}
-                    {["PAID", "REFUNDED", "RESOLVED", "SUBMITTED"].includes(displayStatus) && paymentBreakdown}
+                    {["PAID", "REFUNDED", "RESOLVED"].includes(displayStatus) && paymentBreakdown}
                   </>
                 );
               })()}
