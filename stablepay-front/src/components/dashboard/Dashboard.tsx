@@ -146,7 +146,7 @@ export default function Dashboard() {
           <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle2 className="h-4 w-4 text-purple-500" />
-              <span className="text-xs font-medium text-zinc-500">Completed</span>
+              <span className="text-xs font-medium text-zinc-500">Closed</span>
             </div>
             <p className="text-2xl font-bold text-zinc-900">{stats.completed}</p>
           </div>

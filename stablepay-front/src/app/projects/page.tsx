@@ -139,7 +139,7 @@ export default function ProjectsPage() {
     if (activeTab === "active") list = enrichedEscrows.filter((e) => ACTIVE_STATUSES.includes(e.displayStatus));
     else if (activeTab === "completed") list = enrichedEscrows.filter((e) => COMPLETED_STATUSES.includes(e.displayStatus));
 
-    // Completed: newest finished first (not oldest created). Active/All keep API createdAt order.
+    // Closed: newest finished first (not oldest created). Active/All keep API createdAt order.
     if (activeTab === "completed") {
       return [...list].sort((a, b) => completionSortTime(b.escrow) - completionSortTime(a.escrow));
     }
@@ -167,7 +167,7 @@ export default function ProjectsPage() {
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: "active", label: "Active", count: activeCount },
-    { key: "completed", label: "Completed", count: completedCount },
+    { key: "completed", label: "Closed", count: completedCount },
     { key: "all", label: "All", count: enrichedEscrows.length },
   ];
 
