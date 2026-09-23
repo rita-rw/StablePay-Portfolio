@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { formatUnits, keccak256, toHex } from "viem";
-import { Pencil } from "lucide-react";
+import { Pencil, Copy, Check } from "lucide-react";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
@@ -95,8 +95,19 @@ export default function ProjectDetailPage() {
   const [titleDraft, setTitleDraft] = useState("");
   const [titleSaving, setTitleSaving] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
+  const [escrowCopied, setEscrowCopied] = useState(false);
   useEffect(() => setMounted(true), []);
   const escrowAddress = id as `0x${string}`;
+
+  const copyEscrowAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(escrowAddress);
+      setEscrowCopied(true);
+      window.setTimeout(() => setEscrowCopied(false), 1500);
+    } catch {
+      // Clipboard denied — address is still selectable in the UI
+    }
+  };
 
   useEffect(() => {
     const apiUrl = API_URL;
@@ -1066,6 +1077,15 @@ export default function ProjectDetailPage() {
           <p className="text-xs font-medium text-zinc-500 mb-1">Escrow Address</p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <p className="font-mono text-xs text-zinc-700">{escrowAddress}</p>
+            <button
+              type="button"
+              onClick={() => void copyEscrowAddress()}
+              className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+              aria-label="Copy escrow address"
+            >
+              {escrowCopied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+              {escrowCopied ? "Copied" : "Copy"}
+            </button>
             <a
               href={`${BASESCAN_URL}/address/${escrowAddress}`}
               target="_blank"
