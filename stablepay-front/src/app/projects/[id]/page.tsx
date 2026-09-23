@@ -1520,16 +1520,14 @@ export default function ProjectDetailPage() {
                     {(displayStatus === "ESCALATED" || processingMilestones.get(m.milestoneIndex) === "ESCALATED") && (
                       <div className="mt-3 border-l-2 border-red-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md space-y-1">
                         <p className="mb-1.5 font-semibold text-red-600 uppercase tracking-wider text-[10px]">Escalated</p>
-                        {m.disputeOpenedBy && (
-                          <p className="text-zinc-700">
-                            <span className="font-medium text-zinc-600">Buyer opened dispute:</span>{" "}
-                            {(() => {
-                              const isByBuyer = m.disputeOpenedBy!.toLowerCase() === (buyer as string | undefined)?.toLowerCase();
-                              return isByBuyer ? (escrowMeta?.buyerCompany ?? `${m.disputeOpenedBy!.slice(0, 6)}...${m.disputeOpenedBy!.slice(-4)}`) : (escrowMeta?.sellerCompany ?? `${m.disputeOpenedBy!.slice(0, 6)}...${m.disputeOpenedBy!.slice(-4)}`);
-                            })()}
-                            {m.disputeOpenedAt && <span className="text-zinc-400"> · {new Date(m.disputeOpenedAt).toLocaleDateString()}</span>}
-                          </p>
-                        )}
+                        <p className="text-zinc-700">
+                          <span className="font-medium text-zinc-600">Buyer opened dispute:</span>{" "}
+                          {escrowMeta?.buyerCompany
+                            ?? (buyer
+                              ? `${(buyer as string).slice(0, 6)}...${(buyer as string).slice(-4)}`
+                              : "Buyer")}
+                          {m.disputeOpenedAt && <span className="text-zinc-400"> · {new Date(m.disputeOpenedAt).toLocaleDateString()}</span>}
+                        </p>
                         {(m.disputeReason ?? optimisticDisputes[m.milestoneIndex]) && (
                           <p className="text-zinc-800">
                             <span className="font-medium text-zinc-600">Dispute reason:</span> {m.disputeReason ?? optimisticDisputes[m.milestoneIndex]}

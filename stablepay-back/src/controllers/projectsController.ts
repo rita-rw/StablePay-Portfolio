@@ -33,6 +33,20 @@ function isParticipant(signerAddress: string | undefined, escrow: { buyer: strin
   return [escrow.buyer, escrow.seller].some((p) => p.toLowerCase() === signerAddress.toLowerCase());
 }
 
+function isPlatformSigner(signerAddress: string | undefined): boolean {
+  const platform = process.env.PLATFORM_ADDRESS;
+  if (!signerAddress || !platform) return false;
+  return signerAddress.toLowerCase() === platform.toLowerCase();
+}
+
+/** Buyer, seller, or platform — may see delivery refs, dispute reasons, awards, etc. */
+function canViewPrivateEscrowData(
+  signerAddress: string | undefined,
+  escrow: { buyer: string; seller: string },
+): boolean {
+  return isParticipant(signerAddress, escrow) || isPlatformSigner(signerAddress);
+}
+
 export async function seedProject(req: AuthRequest, res: Response): Promise<void> {
   const { escrowAddress, metadataHash, title, description, txHash } = req.body;
 
@@ -231,7 +245,7 @@ export async function getProjectDetail(req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const participantView = isParticipant(req.signerAddress, parties);
+    const participantView = canViewPrivateEscrowData(req.signerAddress, parties);
     const escrow = participantView
       ? await findParticipantEscrowById(escrowAddress)
       : await findPublicEscrowById(escrowAddress);
@@ -306,7 +320,7 @@ export async function getMilestones(req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    const milestones = isParticipant(req.signerAddress, parties)
+    const milestones = canViewPrivateEscrowData(req.signerAddress, parties)
       ? await getParticipantMilestonesByEscrow(escrowAddress)
       : await getPublicMilestonesByEscrow(escrowAddress);
 
