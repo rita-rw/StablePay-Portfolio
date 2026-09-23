@@ -112,14 +112,38 @@ export default function ProjectsPage() {
     });
   }, [escrows, onChainMap]);
 
+  /** Latest milestone payment/settlement time, else createdAt — used to surface recently finished projects. */
+  function completionSortTime(escrow: Escrow): number {
+    const paidTimes = (escrow.milestones ?? [])
+      .map((m) => (m.paidAt ? new Date(m.paidAt).getTime() : 0))
+      .filter((t) => t > 0);
+    if (paidTimes.length > 0) return Math.max(...paidTimes);
+    return new Date(escrow.createdAt).getTime();
+  }
+
+  function listDateLabel(escrow: Escrow, displayStatus: string): string {
+    const useCompletion =
+      displayStatus === "COMPLETED" ||
+      displayStatus === "CANCELLED" ||
+      displayStatus === "SELLER_REJECTED";
+    const ms = useCompletion ? completionSortTime(escrow) : new Date(escrow.createdAt).getTime();
+    return new Date(ms).toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
+  }
+
   // Filter by tab
   const ACTIVE_STATUSES = ["CREATED", "SELLER_ACCEPTED", "FUNDED", "IN_PROGRESS"];
   const COMPLETED_STATUSES = ["COMPLETED", "CANCELLED", "SELLER_REJECTED"];
 
   const filtered = useMemo(() => {
-    if (activeTab === "active") return enrichedEscrows.filter((e) => ACTIVE_STATUSES.includes(e.displayStatus));
-    if (activeTab === "completed") return enrichedEscrows.filter((e) => COMPLETED_STATUSES.includes(e.displayStatus));
-    return enrichedEscrows;
+    let list = enrichedEscrows;
+    if (activeTab === "active") list = enrichedEscrows.filter((e) => ACTIVE_STATUSES.includes(e.displayStatus));
+    else if (activeTab === "completed") list = enrichedEscrows.filter((e) => COMPLETED_STATUSES.includes(e.displayStatus));
+
+    // Completed: newest finished first (not oldest created). Active/All keep API createdAt order.
+    if (activeTab === "completed") {
+      return [...list].sort((a, b) => completionSortTime(b.escrow) - completionSortTime(a.escrow));
+    }
+    return list;
   }, [enrichedEscrows, activeTab]);
 
   // Pagination
@@ -213,7 +237,7 @@ export default function ProjectsPage() {
                       <p className="font-mono text-xs text-zinc-400 mt-0.5">
                         {escrow.id.slice(0, 6)}...{escrow.id.slice(-4)}
                         <span className="ml-3 not-italic font-sans">
-                          {new Date(escrow.createdAt).toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" })}
+                          {listDateLabel(escrow, displayStatus)}
                         </span>
                       </p>
                     </div>
@@ -260,7 +284,7 @@ export default function ProjectsPage() {
                         <p className="font-mono text-xs text-zinc-400 mt-0.5">
                           {escrow.id.slice(0, 6)}...{escrow.id.slice(-4)}
                           <span className="ml-3 not-italic font-sans">
-                            {new Date(escrow.createdAt).toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" })}
+                            {listDateLabel(escrow, displayStatus)}
                           </span>
                         </p>
                       </div>
