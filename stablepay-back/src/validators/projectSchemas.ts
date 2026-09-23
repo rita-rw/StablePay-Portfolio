@@ -42,6 +42,13 @@ export const MetadataBody = z.object({
     .regex(/^0x[a-fA-F0-9]{64}$/, "Valid metadataHash (bytes32) is required"),
 });
 
+export const RenameTitleBody = z.object({
+  title: z
+    .string("title is required")
+    .min(1, "title is required")
+    .max(MAX_TITLE, `title must be at most ${MAX_TITLE} characters`),
+});
+
 export const DeliveryBody = z.object({
   deliveryReference: z
     .string("deliveryReference is required")

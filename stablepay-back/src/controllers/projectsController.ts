@@ -16,6 +16,7 @@ import {
   findParticipantEscrowsForAddress,
   seedEscrow,
   saveMetadataForHash,
+  updateEscrowTitle,
 } from "../services/escrowService";
 import {
   findMilestone,
@@ -172,6 +173,45 @@ export async function saveMetadata(req: AuthRequest, res: Response): Promise<voi
   } catch (err) {
     console.error("[API] POST /projects/metadata failed", err);
     res.status(500).json({ error: "Failed to save metadata" });
+  }
+}
+
+export async function renameProjectTitle(req: AuthRequest, res: Response): Promise<void> {
+  const escrowAddress = req.params.escrowAddress as string;
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(escrowAddress)) {
+    res.status(400).json({ error: "Invalid Ethereum address" });
+    return;
+  }
+
+  const cleanTitle = sanitize(req.body.title);
+  if (!cleanTitle) {
+    res.status(400).json({ error: "title is required" });
+    return;
+  }
+
+  try {
+    const parties = await findEscrowPartiesById(escrowAddress);
+    if (!parties) {
+      res.status(404).json({ error: "Escrow not found" });
+      return;
+    }
+
+    if (req.signerAddress?.toLowerCase() !== parties.buyer.toLowerCase()) {
+      res.status(403).json({ error: "Only the buyer can rename this project" });
+      return;
+    }
+
+    const updated = await updateEscrowTitle(escrowAddress, cleanTitle);
+    if (!updated) {
+      res.status(404).json({ error: "Escrow not found" });
+      return;
+    }
+
+    res.json({ ok: true, title: cleanTitle });
+  } catch (err) {
+    console.error("[API] PATCH /projects/:escrowAddress/title failed", err);
+    res.status(500).json({ error: "Failed to rename project" });
   }
 }
 

@@ -55,3 +55,21 @@ export async function saveProjectMetadata(
   }
   return { ok: true };
 }
+
+export async function renameProjectTitle(
+  walletClient: WalletClient,
+  escrowAddress: string,
+  title: string,
+): Promise<{ ok: boolean; title?: string; error?: string }> {
+  const res = await authFetch(`${API_URL}/projects/${escrowAddress}/title`, walletClient, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: data.error || "Failed to rename project — please try again." };
+  }
+  const data = await res.json().catch(() => ({}));
+  return { ok: true, title: data.title ?? title };
+}

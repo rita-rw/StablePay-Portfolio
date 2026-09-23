@@ -194,3 +194,17 @@ export async function saveMetadataForHash(
     });
   }
 }
+
+export async function updateEscrowTitle(escrowAddress: string, title: string): Promise<boolean> {
+  const existing = await prisma.escrow.findFirst({
+    where: { id: { equals: escrowAddress, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (!existing) return false;
+
+  await prisma.escrow.update({
+    where: { id: existing.id },
+    data: { title },
+  });
+  return true;
+}

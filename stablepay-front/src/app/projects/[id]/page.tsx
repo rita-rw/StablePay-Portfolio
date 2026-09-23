@@ -5,11 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { formatUnits, keccak256, toHex } from "viem";
+import { Pencil } from "lucide-react";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { authFetch } from "@/lib/authFetch";
+import { renameProjectTitle } from "@/services/projects";
 
 const ERC20_ABI = [
   {
@@ -89,6 +91,10 @@ export default function ProjectDetailPage() {
     paidAt?: string | null;
   }[]>([]);
   const [events, setEvents] = useState<ProjectEvent[]>([]);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [titleError, setTitleError] = useState<string | null>(null);
   useEffect(() => setMounted(true), []);
   const escrowAddress = id as `0x${string}`;
 
@@ -374,6 +380,53 @@ export default function ProjectDetailPage() {
   const isSeller =
     !!(address && seller && address.toLowerCase() === (seller as string).toLowerCase());
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());
+
+  const displayTitle = decodeTitle(escrowMeta?.title || "Untitled Project");
+
+  const startEditTitle = () => {
+    setTitleDraft(escrowMeta?.title ? decodeTitle(escrowMeta.title) : "");
+    setTitleError(null);
+    setIsEditingTitle(true);
+  };
+
+  const cancelEditTitle = () => {
+    setIsEditingTitle(false);
+    setTitleDraft("");
+    setTitleError(null);
+  };
+
+  const saveTitle = async () => {
+    if (!walletClient) {
+      setTitleError("Wallet not ready — please try again.");
+      return;
+    }
+    const nextTitle = titleDraft.trim();
+    if (!nextTitle) {
+      setTitleError("Title is required");
+      return;
+    }
+    if (nextTitle.length > 200) {
+      setTitleError("Title must be at most 200 characters");
+      return;
+    }
+
+    setTitleSaving(true);
+    setTitleError(null);
+    try {
+      const result = await renameProjectTitle(walletClient, escrowAddress, nextTitle);
+      if (!result.ok) {
+        setTitleError(result.error || "Failed to rename project");
+        return;
+      }
+      setEscrowMeta((prev) => (prev ? { ...prev, title: result.title ?? nextTitle } : { title: result.title ?? nextTitle }));
+      setIsEditingTitle(false);
+      setTitleDraft("");
+    } catch {
+      setTitleError("Failed to rename project — please try again.");
+    } finally {
+      setTitleSaving(false);
+    }
+  };
 
   const [deliveryInputs, setDeliveryInputs] = useState<Record<number, string>>({});
   const [disputeInputs, setDisputeInputs] = useState<Record<number, string>>({});
@@ -906,9 +959,58 @@ export default function ProjectDetailPage() {
         </button>
       </div>
 
-      <h1 className={`text-3xl font-bold tracking-tight text-zinc-900 ${escrowMeta?.description ? "mb-1" : "mb-6"}`}>
-        {decodeTitle(escrowMeta?.title || "Project Details")}
-      </h1>
+      {isEditingTitle ? (
+        <div className={`${escrowMeta?.description ? "mb-1" : "mb-6"}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              maxLength={200}
+              disabled={titleSaving}
+              autoFocus
+              className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-lg font-semibold text-zinc-900 outline-none focus:border-zinc-500"
+              placeholder="Project name"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveTitle();
+                if (e.key === "Escape") cancelEditTitle();
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void saveTitle()}
+              disabled={titleSaving}
+              className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {titleSaving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={cancelEditTitle}
+              disabled={titleSaving}
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+          {titleError && <p className="mt-2 text-xs text-red-500">{titleError}</p>}
+        </div>
+      ) : (
+        <div className={`flex items-center gap-2 ${escrowMeta?.description ? "mb-1" : "mb-6"}`}>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">{displayTitle}</h1>
+          {isBuyer && (
+            <button
+              type="button"
+              onClick={startEditTitle}
+              className="inline-flex items-center gap-1 rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+              aria-label="Rename project"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Rename
+            </button>
+          )}
+        </div>
+      )}
       {escrowMeta?.description && (
         <p className="mb-6 text-sm text-zinc-900">
           {escrowMeta.description}

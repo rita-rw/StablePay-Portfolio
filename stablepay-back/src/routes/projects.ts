@@ -4,12 +4,14 @@ import { validate } from "../middleware/validate";
 import {
   SeedProjectBody,
   MetadataBody,
+  RenameTitleBody,
   DeliveryBody,
   DisputeBody,
 } from "../validators/projectSchemas";
 import {
   seedProject,
   saveMetadata,
+  renameProjectTitle,
   getProjectDetail,
   getProjectsByAddress,
   getMilestones,
@@ -24,6 +26,7 @@ const router = Router();
 router.post("/seed", requireAuth, validate(SeedProjectBody), seedProject);
 router.post("/metadata", requireAuth, validate(MetadataBody), saveMetadata);
 router.get("/detail/:escrowAddress", optionalAuth, getProjectDetail);
+router.patch("/:escrowAddress/title", requireAuth, validate(RenameTitleBody), renameProjectTitle);
 router.get("/:address", optionalAuth, getProjectsByAddress);
 router.get("/:escrowAddress/milestones", optionalAuth, getMilestones);
 router.get("/:escrowAddress/events", getEvents);
