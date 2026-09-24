@@ -388,6 +388,21 @@ export async function getEvents(req: AuthRequest, res: Response): Promise<void> 
         events.push({ type: "dispute_opened", timestamp: escrow.createdAt, milestoneIndex: milestone.milestoneIndex });
       }
 
+      if (milestone.disputeEscalatedAt) {
+        events.push({
+          type: "dispute_escalated",
+          timestamp: milestone.disputeEscalatedAt,
+          milestoneIndex: milestone.milestoneIndex,
+        });
+      } else if (milestone.isEscalated || milestone.status === "ESCALATED") {
+        // Escalated before disputeEscalatedAt was reliably stored — place after dispute open.
+        events.push({
+          type: "dispute_escalated",
+          timestamp: milestone.disputeOpenedAt ?? escrow.createdAt,
+          milestoneIndex: milestone.milestoneIndex,
+        });
+      }
+
       if (milestone.paidAt) {
         if (milestone.disputeOpenedAt && ["PAID", "REFUNDED", "RESOLVED"].includes(milestone.status)) {
           events.push({ type: "dispute_resolved_platform", timestamp: milestone.paidAt, milestoneIndex: milestone.milestoneIndex });
