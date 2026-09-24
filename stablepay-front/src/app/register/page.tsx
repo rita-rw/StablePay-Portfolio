@@ -158,7 +158,7 @@ function RegisterForm() {
                   className="mt-0.5 accent-primary"
                 />
                 <span className="text-zinc-600">
-                  I accept the <a href="#" className="text-primary font-medium hover:underline">Terms of Service</a>
+                  I accept the <span className="font-medium text-zinc-800">Terms of Service</span>
                 </span>
               </label>
               <label className="flex items-start gap-3 text-sm cursor-pointer">
@@ -169,8 +169,7 @@ function RegisterForm() {
                   className="mt-0.5 accent-primary"
                 />
                 <span className="text-zinc-600">
-                  I accept the <a href="#" className="text-primary font-medium hover:underline">Payment Terms</a>{" "}
-                  (2.5% fee per milestone, +1% for admin intervention)
+                  I accept the <span className="font-medium text-zinc-800">Payment Terms</span>
                 </span>
               </label>
             </div>
