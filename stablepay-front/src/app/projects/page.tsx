@@ -121,13 +121,18 @@ export default function ProjectsPage() {
     return new Date(escrow.createdAt).getTime();
   }
 
+  function formatCardDate(ms: number): string {
+    return new Date(ms).toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
+  }
+
   function listDateLabel(escrow: Escrow, displayStatus: string): string {
-    const useCompletion =
+    const created = formatCardDate(new Date(escrow.createdAt).getTime());
+    const isClosed =
       displayStatus === "COMPLETED" ||
       displayStatus === "CANCELLED" ||
       displayStatus === "SELLER_REJECTED";
-    const ms = useCompletion ? completionSortTime(escrow) : new Date(escrow.createdAt).getTime();
-    return new Date(ms).toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
+    if (!isClosed) return `Created ${created}`;
+    return `Created ${created} · Closed ${formatCardDate(completionSortTime(escrow))}`;
   }
 
   // Filter by tab
