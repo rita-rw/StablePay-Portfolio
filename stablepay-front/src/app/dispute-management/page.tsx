@@ -119,7 +119,13 @@ export default function AdminPage() {
   }, [escrows, onChainData]);
 
   const activeProjects = projects.filter((p) => p.activeDisputeCount > 0);
-  const resolvedProjects = projects.filter((p) => p.activeDisputeCount === 0 && p.resolvedDisputeCount > 0);
+  const resolvedProjects = projects
+    .filter((p) => p.activeDisputeCount === 0 && p.resolvedDisputeCount > 0)
+    .sort((a, b) => {
+      const aAt = a.resolvedAt ? Date.parse(a.resolvedAt) : 0;
+      const bAt = b.resolvedAt ? Date.parse(b.resolvedAt) : 0;
+      return bAt - aAt; // newest closed first
+    });
   const displayed = activeTab === "active" ? activeProjects : resolvedProjects;
 
   useEffect(() => {
