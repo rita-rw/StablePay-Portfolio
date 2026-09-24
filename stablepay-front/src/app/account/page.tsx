@@ -41,13 +41,28 @@ export default function AccountPage() {
       router.push("/");
       return;
     }
-    fetchUser(address).then((data) => {
-      if (!data) { router.push("/register"); return; }
+    if (!walletClient) return;
+
+    let cancelled = false;
+    setLoading(true);
+    fetchUser(address, walletClient).then((data) => {
+      if (cancelled) return;
+      if (!data) {
+        router.push("/register");
+        return;
+      }
       setProfile(data);
-      setForm({ companyName: data.companyName, orgNumber: data.orgNumber, email: data.email });
+      setForm({
+        companyName: data.companyName ?? "",
+        orgNumber: data.orgNumber ?? "",
+        email: data.email ?? "",
+      });
       setLoading(false);
     });
-  }, [mounted, isConnected, address, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, isConnected, address, walletClient, router]);
 
   function startEdit() {
     setSaveError(null);
@@ -91,9 +106,14 @@ export default function AccountPage() {
   if (!profile) return null;
 
   const initials = profile.companyName.slice(0, 2).toUpperCase();
-  const memberSince = new Date(profile.createdAt).toLocaleDateString("en-GB", {
-    day: "numeric", month: "long", year: "numeric",
-  });
+  const createdMs = profile.createdAt ? Date.parse(profile.createdAt) : NaN;
+  const memberSince = Number.isFinite(createdMs)
+    ? new Date(createdMs).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : null;
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -105,7 +125,9 @@ export default function AccountPage() {
             {initials}
           </div>
           <h1 className="mt-4 text-2xl font-bold text-zinc-900">{profile.companyName}</h1>
-          <p className="mt-1 text-sm text-zinc-500">Member since {memberSince}</p>
+          {memberSince && (
+            <p className="mt-1 text-sm text-zinc-500">Member since {memberSince}</p>
+          )}
         </div>
 
         {/* Card */}
@@ -231,7 +253,7 @@ function Field({
           />
         ) : (
           <p className={`text-sm text-zinc-900 truncate ${mono ? "font-mono text-xs text-zinc-500" : "font-medium"}`}>
-            {value}
+            {value?.trim() ? value : "—"}
           </p>
         )}
       </div>

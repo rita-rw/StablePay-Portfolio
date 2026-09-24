@@ -2,8 +2,11 @@ import type { WalletClient } from "viem";
 import { authFetch } from "@/lib/authFetch";
 import { API_URL } from "@/lib/constants";
 
-export async function fetchUser(address: string) {
-  const res = await fetch(`${API_URL}/users/${address}`);
+/** Public fields without auth; pass walletClient to get private profile (org/email/createdAt) when allowed. */
+export async function fetchUser(address: string, walletClient?: WalletClient) {
+  const res = walletClient
+    ? await authFetch(`${API_URL}/users/${address}`, walletClient)
+    : await fetch(`${API_URL}/users/${address}`);
   if (!res.ok) return null;
   return res.json();
 }
