@@ -48,6 +48,10 @@ function SettingRow({
 }) {
   const [inputVal, setInputVal] = useState("");
 
+  useEffect(() => {
+    if (result?.ok) setInputVal("");
+  }, [result]);
+
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white px-6 py-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="mb-4">
@@ -160,6 +164,8 @@ export default function AdminSettings() {
     tokenRemove: null,
   });
   const [tokenAddress, setTokenAddress] = useState("");
+  /** Optimistic values — wagmi refetch can lag behind confirmed factory txs. */
+  const [overrides, setOverrides] = useState<Partial<Record<SettingKey, number>>>({});
 
   useEffect(() => setMounted(true), []);
 
@@ -169,14 +175,12 @@ export default function AdminSettings() {
     }
   }, [mounted, isConnected, address, router]);
 
-  if (!mounted) return null;
-  if (!isConnected || address?.toLowerCase() !== PLATFORM_ADDRESS?.toLowerCase()) return null;
-
   async function handleSetting(
     key: SettingKey,
     endpoint: string,
     body: Record<string, unknown>,
-    refetch: () => void,
+    refetch: () => Promise<unknown>,
+    nextValue: number,
   ) {
     if (!walletClient) return;
     setPending((p) => ({ ...p, [key]: true }));
@@ -184,7 +188,13 @@ export default function AdminSettings() {
     const result = await updateAdminSetting(walletClient, endpoint, body);
     setResults((r) => ({ ...r, [key]: result }));
     setPending((p) => ({ ...p, [key]: false }));
-    if (result.ok) refetch();
+    if (result.ok) {
+      setOverrides((o) => ({ ...o, [key]: nextValue }));
+      await refetch();
+      // Frontend RPC can lag one block behind backend waitForTransactionReceipt
+      await new Promise((r) => setTimeout(r, 1000));
+      await refetch();
+    }
   }
 
   async function handleToken(action: "tokenApprove" | "tokenRemove") {
@@ -197,10 +207,16 @@ export default function AdminSettings() {
     setPending((p) => ({ ...p, [action]: false }));
   }
 
-  const feeBpsNum = feeBps !== undefined ? Number(feeBps) : null;
-  const autoApprovalNum = autoApprovalDays !== undefined ? Number(autoApprovalDays) : null;
-  const disputeTimeoutNum = disputeTimeoutDays !== undefined ? Number(disputeTimeoutDays) : null;
-  const correctionWindowNum = correctionWindowDays !== undefined ? Number(correctionWindowDays) : null;
+  if (!mounted) return null;
+  if (!isConnected || address?.toLowerCase() !== PLATFORM_ADDRESS?.toLowerCase()) return null;
+
+  const feeBpsNum = overrides.fee ?? (feeBps !== undefined ? Number(feeBps) : null);
+  const autoApprovalNum =
+    overrides.autoApproval ?? (autoApprovalDays !== undefined ? Number(autoApprovalDays) : null);
+  const disputeTimeoutNum =
+    overrides.disputeTimeout ?? (disputeTimeoutDays !== undefined ? Number(disputeTimeoutDays) : null);
+  const correctionWindowNum =
+    overrides.correctionWindow ?? (correctionWindowDays !== undefined ? Number(correctionWindowDays) : null);
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -222,15 +238,17 @@ export default function AdminSettings() {
             description="Fee taken by the platform on each payment (max 10%)."
             currentValue={feeBpsNum !== null ? String(feeBpsNum) : "—"}
             displayValue={feeBpsNum !== null ? `${(feeBpsNum / 100).toFixed(2)}%` : "—"}
-            inputLabel="Fee in bps (0–1000)"
+            inputLabel="Percent (e.g. 2.5)"
             inputMin={0}
-            inputMax={1000}
+            inputMax={10}
+            inputStep={0.01}
             loading={loadingFee}
             pending={pending.fee}
             result={results.fee}
-            onSubmit={(v) =>
-              handleSetting("fee", "/admin/settings/fee", { feeBps: v }, refetchFee)
-            }
+            onSubmit={(v) => {
+              const feeBps = Math.round(v * 100);
+              handleSetting("fee", "/admin/settings/fee", { feeBps }, refetchFee, feeBps);
+            }}
           />
 
           <SettingRow
@@ -243,7 +261,7 @@ export default function AdminSettings() {
             pending={pending.autoApproval}
             result={results.autoApproval}
             onSubmit={(v) =>
-              handleSetting("autoApproval", "/admin/settings/auto-approval", { days: v }, refetchAutoApproval)
+              handleSetting("autoApproval", "/admin/settings/auto-approval", { days: v }, refetchAutoApproval, v)
             }
           />
 
@@ -257,7 +275,13 @@ export default function AdminSettings() {
             pending={pending.disputeTimeout}
             result={results.disputeTimeout}
             onSubmit={(v) =>
-              handleSetting("disputeTimeout", "/admin/settings/dispute-timeout", { days: v }, refetchDisputeTimeout)
+              handleSetting(
+                "disputeTimeout",
+                "/admin/settings/dispute-timeout",
+                { days: v },
+                refetchDisputeTimeout,
+                v,
+              )
             }
           />
 
@@ -276,6 +300,7 @@ export default function AdminSettings() {
                 "/admin/settings/correction-window",
                 { days: v },
                 refetchCorrectionWindow,
+                v,
               )
             }
           />
