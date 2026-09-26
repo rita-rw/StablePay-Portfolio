@@ -1077,17 +1077,10 @@ export default function ProjectDetailPage() {
   return (
     <div className="min-h-screen bg-zinc-50">
     <div className="mx-auto max-w-4xl px-4 py-6">
-      <div className="mb-8 flex items-center justify-between">
-        <button
-          onClick={() => router.push("/projects")}
-          className="text-sm text-zinc-500 hover:text-zinc-900 hover:underline"
-        >
-          ← Back to Projects
-        </button>
-      </div>
-
+      <div className={`flex items-start justify-between gap-4 ${escrowMeta?.description ? "mb-1" : "mb-6"}`}>
+      <div className="min-w-0 flex-1">
       {isEditingTitle ? (
-        <div className={`${escrowMeta?.description ? "mb-1" : "mb-6"}`}>
+        <div>
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="text"
@@ -1123,7 +1116,7 @@ export default function ProjectDetailPage() {
           {titleError && <p className="mt-2 text-xs text-red-500">{titleError}</p>}
         </div>
       ) : (
-        <div className={`flex items-center gap-2 ${escrowMeta?.description ? "mb-1" : "mb-6"}`}>
+        <div className="flex items-center gap-2">
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">{displayTitle}</h1>
           {isBuyer && (
             <button
@@ -1138,6 +1131,14 @@ export default function ProjectDetailPage() {
           )}
         </div>
       )}
+      </div>
+        <button
+          onClick={() => router.push("/projects")}
+          className="shrink-0 pt-2 text-sm text-zinc-500 hover:text-zinc-900 hover:underline"
+        >
+          ← Back to Projects
+        </button>
+      </div>
       {escrowMeta?.description && (
         <p className="mb-6 text-sm text-zinc-900">
           {escrowMeta.description}
@@ -1262,6 +1263,102 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {isSeller && (sellerAccepted || isAcceptSuccess) && !isFunded && !isFundSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && (
+        <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
+          <p className="text-sm text-orange-700">
+            You accepted this project. Waiting for the buyer to fund the escrow before you can start work.
+          </p>
+        </div>
+      )}
+
+      {isBuyer && (sellerAccepted || isAcceptSuccess) && !isFunded && !isFundSuccess && !isCancelled && !isCancelSuccess && (
+        <div className="mb-6 space-y-4">
+          <h2 className="text-lg font-semibold">Fund this Project</h2>
+          <p className="text-sm text-zinc-800">
+            Funding requires two transactions: first you approve USDC transfer,
+            then you deposit funds into the escrow contract.
+          </p>
+
+          <div className="space-y-3">
+            <div className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="font-medium">Step 1: Approve USDC</p>
+                {(hasEnoughAllowance || isApproveSuccess) && (
+                  <span className="text-sm text-emerald-600">✓ Approved</span>
+                )}
+              </div>
+              <p className="mb-3 text-xs text-zinc-700">
+                Allow the escrow contract to transfer {displayAmount} USDC from
+                your wallet.
+              </p>
+              {!hasEnoughAllowance && !isApproveSuccess && (
+                <button
+                  onClick={handleApprove}
+                  disabled={isApprovePending || isApproveConfirming}
+                  className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
+                >
+                  {isApprovePending
+                    ? "Confirm in Wallet..."
+                    : isApproveConfirming
+                      ? "Waiting for Confirmation..."
+                      : `Approve ${displayAmount} USDC`}
+                </button>
+              )}
+              {approveError && (
+                <p className="mt-2 text-xs text-red-500">
+                  {parseContractError(approveError)}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]">
+              <p className="mb-2 font-medium">Step 2: Fund Escrow</p>
+              <p className="mb-3 text-xs text-zinc-700">
+                Deposit {displayAmount} USDC into the escrow contract. Funds are
+                locked until milestones are approved.
+              </p>
+              <button
+                onClick={handleFund}
+                disabled={
+                  isFundPending ||
+                  isFundConfirming ||
+                  (!hasEnoughAllowance && !isApproveSuccess)
+                }
+                className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
+              >
+                {isFundPending
+                  ? "Confirm in Wallet..."
+                  : isFundConfirming
+                    ? "Waiting for Confirmation..."
+                    : `Fund ${displayAmount} USDC`}
+              </button>
+              {fundError && (
+                <p className="mt-2 text-xs text-red-500">
+                  {parseContractError(fundError)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 text-center">
+            <button
+              onClick={handleCancelEscrow}
+              disabled={isCancelPending || isCancelConfirming}
+              className="text-sm text-zinc-500 underline transition-colors hover:text-red-500 disabled:opacity-50"
+            >
+              {isCancelPending
+                ? "Confirm in Wallet..."
+                : isCancelConfirming
+                ? "Cancelling..."
+                : "Cancel this project"}
+            </button>
+            {cancelError && (
+              <p className="mt-1 text-xs text-red-500">{parseContractError(cancelError)}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="mb-6 flex gap-1 rounded-xl border border-zinc-300 bg-zinc-50 p-1">
         {(["overview", "timeline"] as const).map((tab) => (
@@ -1375,94 +1472,6 @@ export default function ProjectDetailPage() {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {isBuyer && (sellerAccepted || isAcceptSuccess) && !isFunded && !isFundSuccess && !isCancelled && !isCancelSuccess && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Fund this Project</h2>
-          <p className="text-sm text-zinc-800">
-            Funding requires two transactions: first you approve USDC transfer,
-            then you deposit funds into the escrow contract.
-          </p>
-
-          <div className="space-y-3">
-            <div className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="font-medium">Step 1: Approve USDC</p>
-                {(hasEnoughAllowance || isApproveSuccess) && (
-                  <span className="text-sm text-emerald-600">✓ Approved</span>
-                )}
-              </div>
-              <p className="mb-3 text-xs text-zinc-700">
-                Allow the escrow contract to transfer {displayAmount} USDC from
-                your wallet.
-              </p>
-              {!hasEnoughAllowance && !isApproveSuccess && (
-                <button
-                  onClick={handleApprove}
-                  disabled={isApprovePending || isApproveConfirming}
-                  className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
-                >
-                  {isApprovePending
-                    ? "Confirm in Wallet..."
-                    : isApproveConfirming
-                      ? "Waiting for Confirmation..."
-                      : `Approve ${displayAmount} USDC`}
-                </button>
-              )}
-              {approveError && (
-                <p className="mt-2 text-xs text-red-500">
-                  {parseContractError(approveError)}
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]">
-              <p className="mb-2 font-medium">Step 2: Fund Escrow</p>
-              <p className="mb-3 text-xs text-zinc-700">
-                Deposit {displayAmount} USDC into the escrow contract. Funds are
-                locked until milestones are approved.
-              </p>
-              <button
-                onClick={handleFund}
-                disabled={
-                  isFundPending ||
-                  isFundConfirming ||
-                  (!hasEnoughAllowance && !isApproveSuccess)
-                }
-                className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
-              >
-                {isFundPending
-                  ? "Confirm in Wallet..."
-                  : isFundConfirming
-                    ? "Waiting for Confirmation..."
-                    : `Fund ${displayAmount} USDC`}
-              </button>
-              {fundError && (
-                <p className="mt-2 text-xs text-red-500">
-                  {parseContractError(fundError)}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 text-center">
-            <button
-              onClick={handleCancelEscrow}
-              disabled={isCancelPending || isCancelConfirming}
-              className="text-sm text-zinc-500 underline transition-colors hover:text-red-500 disabled:opacity-50"
-            >
-              {isCancelPending
-                ? "Confirm in Wallet..."
-                : isCancelConfirming
-                ? "Cancelling..."
-                : "Cancel this project"}
-            </button>
-            {cancelError && (
-              <p className="mt-1 text-xs text-red-500">{parseContractError(cancelError)}</p>
-            )}
-          </div>
         </div>
       )}
 
