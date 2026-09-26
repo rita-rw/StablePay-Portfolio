@@ -169,8 +169,8 @@ function ProjectsList() {
     if (activeTab === "active") list = enrichedEscrows.filter((e) => ACTIVE_STATUSES.includes(e.displayStatus));
     else if (activeTab === "completed") list = enrichedEscrows.filter((e) => COMPLETED_STATUSES.includes(e.displayStatus));
 
-    // Closed: newest finished first (not oldest created). Active/All keep API createdAt order.
-    if (activeTab === "completed") {
+    // Closed and All: newest finished first. Active keeps the API createdAt order.
+    if (activeTab === "completed" || activeTab === "all") {
       return [...list].sort((a, b) => completionSortTime(b.escrow) - completionSortTime(a.escrow));
     }
     return list;
