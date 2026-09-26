@@ -21,7 +21,7 @@ import {
   projectRejectedEvent,
   disputeEscalatedEvent,
 } from "./abi/events";
-import { seedEscrow } from "./services/escrowService";
+import { milestoneLabelAt, parseMilestoneLabels, seedEscrow } from "./services/escrowService";
 
 const MILESTONE_STATUS_MAP: Record<number, MilestoneStatus> = {
   0: MilestoneStatus.PENDING,
@@ -399,9 +399,13 @@ async function getMetadataForHash(metadataHash: `0x${string}`, claimMetadata: bo
   if (claimMetadata) {
     try {
       const meta = await prisma.projectMetadata.delete({ where: { metadataHash } });
-      return { title: meta.title, description: meta.description };
+      return {
+        title: meta.title,
+        description: meta.description,
+        milestoneLabels: parseMilestoneLabels(meta.milestoneLabels),
+      };
     } catch {
-      return { title: null, description: null };
+      return { title: null, description: null, milestoneLabels: [] as string[] };
     }
   }
 
@@ -409,6 +413,7 @@ async function getMetadataForHash(metadataHash: `0x${string}`, claimMetadata: bo
   return {
     title: meta?.title ?? null,
     description: meta?.description ?? null,
+    milestoneLabels: parseMilestoneLabels(meta?.milestoneLabels),
   };
 }
 
@@ -420,7 +425,7 @@ async function seedEscrowFromCreationLog(
   knownEscrows.add(args.escrow.toLowerCase());
 
   try {
-    const { title, description } = await getMetadataForHash(args.metadataHash, options.claimMetadata);
+    const { title, description, milestoneLabels } = await getMetadataForHash(args.metadataHash, options.claimMetadata);
 
     await prisma.escrow.upsert({
       where: { id: args.escrow },
@@ -452,6 +457,7 @@ async function seedEscrowFromCreationLog(
           args: [BigInt(i)],
         });
 
+        const label = milestoneLabelAt(milestoneLabels, i);
         await prisma.milestone.upsert({
           where: { escrowAddress_milestoneIndex: { escrowAddress: args.escrow, milestoneIndex: i } },
           create: {
@@ -459,10 +465,12 @@ async function seedEscrowFromCreationLog(
             milestoneIndex: i,
             amount: result[0].toString(),
             status: MILESTONE_STATUS_MAP[Number(result[1])] ?? "PENDING",
+            ...(label ? { label } : {}),
           },
           update: {
             amount: result[0].toString(),
             status: MILESTONE_STATUS_MAP[Number(result[1])] ?? "PENDING",
+            ...(label ? { label } : {}),
           },
         });
       } catch (err) {
@@ -656,6 +664,7 @@ export async function startListener() {
         // Look up pre-saved metadata and upsert the escrow atomically.
         // If the upsert fails after the metadata delete, the transaction rolls back
         // and the metadata row is preserved — no permanent data loss.
+        let milestoneLabels: string[] = [];
         try {
           await prisma.$transaction(async (tx) => {
             let title: string | null = null;
@@ -666,6 +675,7 @@ export async function startListener() {
               });
               title = meta.title;
               description = meta.description;
+              milestoneLabels = parseMilestoneLabels(meta.milestoneLabels);
             } catch {
               // Record not found — either never saved or already claimed by a concurrent event
             }
@@ -704,6 +714,7 @@ export async function startListener() {
               functionName: "milestones",
               args: [BigInt(i)],
             });
+            const label = milestoneLabelAt(milestoneLabels, i);
             await prisma.milestone.upsert({
               where: { escrowAddress_milestoneIndex: { escrowAddress: args.escrow, milestoneIndex: i } },
               create: {
@@ -711,8 +722,9 @@ export async function startListener() {
                 milestoneIndex: i,
                 amount: result[0].toString(),
                 status: MILESTONE_STATUS_MAP[Number(result[1])] ?? "PENDING",
+                ...(label ? { label } : {}),
               },
-              update: {},
+              update: label ? { label } : {},
             });
           } catch (err) {
             console.error(`[listener] EscrowCreated milestone ${i} create failed`, err);

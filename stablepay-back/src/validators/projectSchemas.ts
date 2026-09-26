@@ -40,6 +40,10 @@ export const MetadataBody = z.object({
   metadataHash: z
     .string("Valid metadataHash (bytes32) is required")
     .regex(/^0x[a-fA-F0-9]{64}$/, "Valid metadataHash (bytes32) is required"),
+  milestoneLabels: z
+    .array(z.string().max(100, "milestone label must be at most 100 characters"))
+    .max(50, "at most 50 milestone labels")
+    .optional(),
 });
 
 export const RenameTitleBody = z.object({

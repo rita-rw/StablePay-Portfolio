@@ -42,7 +42,12 @@ export async function seedProject(walletClient: WalletClient, payload: {
 
 export async function saveProjectMetadata(
   walletClient: WalletClient,
-  payload: { title: string; description: string | null; metadataHash: string },
+  payload: {
+    title: string;
+    description: string | null;
+    metadataHash: string;
+    milestoneLabels?: string[];
+  },
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await authFetch(`${API_URL}/projects/metadata`, walletClient, {
     method: "POST",

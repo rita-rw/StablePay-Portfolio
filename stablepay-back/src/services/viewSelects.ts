@@ -17,6 +17,7 @@ export const publicMilestoneSelect = {
   escrowAddress: true,
   milestoneIndex: true,
   amount: true,
+  label: true,
   status: true,
 } satisfies Prisma.MilestoneSelect;
 
@@ -24,6 +25,7 @@ export const participantMilestoneSelect = {
   escrowAddress: true,
   milestoneIndex: true,
   amount: true,
+  label: true,
   status: true,
   deliveryReference: true,
   submittedAt: true,

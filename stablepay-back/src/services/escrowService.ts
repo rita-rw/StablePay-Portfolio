@@ -109,6 +109,22 @@ export async function findAllEscrows() {
   });
 }
 
+export function parseMilestoneLabels(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => (typeof item === "string" ? item : ""));
+  } catch {
+    return [];
+  }
+}
+
+export function milestoneLabelAt(labels: string[], index: number): string | null {
+  const value = labels[index]?.trim();
+  return value ? value : null;
+}
+
 export async function seedEscrow(params: {
   escrowAddress: string;
   buyer: string;
@@ -164,11 +180,28 @@ export async function seedEscrow(params: {
       },
     });
 
+    const stored = metadataHash
+      ? await tx.projectMetadata.findUnique({
+          where: { metadataHash },
+          select: { milestoneLabels: true },
+        })
+      : null;
+    const labels = parseMilestoneLabels(stored?.milestoneLabels);
+
     for (let i = 0; i < milestoneAmounts.length; i++) {
+      const label = milestoneLabelAt(labels, i);
       await tx.milestone.upsert({
         where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: i } },
-        create: { escrowAddress, milestoneIndex: i, amount: milestoneAmounts[i] },
-        update: { amount: milestoneAmounts[i] },
+        create: {
+          escrowAddress,
+          milestoneIndex: i,
+          amount: milestoneAmounts[i],
+          ...(label ? { label } : {}),
+        },
+        update: {
+          amount: milestoneAmounts[i],
+          ...(label ? { label } : {}),
+        },
       });
     }
   });
@@ -177,8 +210,10 @@ export async function seedEscrow(params: {
 export async function saveMetadataForHash(
   metadataHash: string,
   title: string,
-  description: string | null
+  description: string | null,
+  milestoneLabels: string[] | null,
 ): Promise<void> {
+  const labelsJson = milestoneLabels ? JSON.stringify(milestoneLabels) : null;
   const existing = await prisma.escrow.findFirst({ where: { metadataHash } });
 
   if (existing) {
@@ -186,11 +221,21 @@ export async function saveMetadataForHash(
       where: { id: existing.id },
       data: { title, description },
     });
+    if (milestoneLabels) {
+      for (let i = 0; i < milestoneLabels.length; i++) {
+        const label = milestoneLabelAt(milestoneLabels, i);
+        if (!label) continue;
+        await prisma.milestone.updateMany({
+          where: { escrowAddress: existing.id, milestoneIndex: i },
+          data: { label },
+        });
+      }
+    }
   } else {
     await prisma.projectMetadata.upsert({
       where: { metadataHash },
-      create: { metadataHash, title, description },
-      update: { title, description },
+      create: { metadataHash, title, description, milestoneLabels: labelsJson },
+      update: { title, description, milestoneLabels: labelsJson },
     });
   }
 }

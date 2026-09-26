@@ -173,6 +173,11 @@ export async function saveMetadata(req: AuthRequest, res: Response): Promise<voi
 
   const cleanTitle = sanitize(title);
   const cleanDescription = description ? sanitize(description) : null;
+  const cleanLabels = Array.isArray(req.body.milestoneLabels)
+    ? req.body.milestoneLabels.map((item: unknown) =>
+        typeof item === "string" ? sanitize(item).slice(0, 100) : "",
+      )
+    : null;
 
   try {
     // If an escrow already exists with this hash, verify the signer is the buyer
@@ -182,7 +187,7 @@ export async function saveMetadata(req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    await saveMetadataForHash(metadataHash, cleanTitle, cleanDescription);
+    await saveMetadataForHash(metadataHash, cleanTitle, cleanDescription, cleanLabels);
     res.json({ ok: true });
   } catch (err) {
     console.error("[API] POST /projects/metadata failed", err);

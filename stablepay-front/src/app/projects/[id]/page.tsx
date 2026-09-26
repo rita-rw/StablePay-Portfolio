@@ -82,6 +82,7 @@ export default function ProjectDetailPage() {
   const [milestones, setMilestones] = useState<{
     milestoneIndex: number;
     amount: string;
+    label?: string | null;
     status: string;
     isEscalated: boolean;
     deliveryReference?: string | null;
@@ -1276,6 +1277,33 @@ export default function ProjectDetailPage() {
 
       {activeTab === "overview" && (<>
 
+      {!(isFunded || isFundSuccess) && enrichedMilestones.length > 0 && (
+        <div className="mb-6 space-y-3">
+          <h2 className="text-lg font-semibold">Milestones</h2>
+          {enrichedMilestones.map((m) => {
+            const grossBase = BigInt(m.amount);
+            const feeBase = calcFeeBase(grossBase, 250n);
+            const sellerReceives = grossBase - feeBase;
+            return (
+              <div
+                key={m.milestoneIndex}
+                className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <p className="font-medium text-zinc-900">
+                    {m.label?.trim() || `Milestone ${m.milestoneIndex + 1}`}
+                  </p>
+                  <p className="shrink-0 font-semibold text-zinc-900">{formatUSDC(grossBase)} USDC</p>
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">
+                  Platform fee {formatUSDC(feeBase)} USDC (2.5%). Seller receives {formatUSDC(sellerReceives)} USDC.
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {isSeller && !sellerAccepted && !isAcceptSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && userChecked && !isRegistered && (
         <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
           <h2 className="mb-2 text-lg font-semibold">Registration Required</h2>
@@ -1492,7 +1520,7 @@ export default function ProjectDetailPage() {
               className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]"
             >
               <div className="mb-2 flex items-center justify-between">
-                <p className="font-medium">Milestone {m.milestoneIndex + 1}</p>
+                <p className="font-medium">{m.label?.trim() || `Milestone ${m.milestoneIndex + 1}`}</p>
                 {showProcessingBadge ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 border border-orange-200 px-3 py-1 text-xs font-medium text-orange-600">
                     <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

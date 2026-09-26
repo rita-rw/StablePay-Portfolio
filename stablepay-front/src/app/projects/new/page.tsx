@@ -190,12 +190,12 @@ export default function CreateProjectPage() {
 
     setValidationError(null);
 
-    const milestoneAmounts = milestones
-      .filter((m) => parseFloat(m.amount) > 0)
-      .map((m) => parseUnits(m.amount, 6));
+    const fundedMilestones = milestones.filter((m) => parseFloat(m.amount) > 0);
+    const milestoneAmounts = fundedMilestones.map((m) => parseUnits(m.amount, 6));
+    const milestoneLabels = fundedMilestones.map((m) => m.label.trim());
 
     const metadataHash = keccak256(
-      toBytes(`${title || ""}:${description || ""}`)
+      toBytes(`${title || ""}:${description || ""}:${milestoneLabels.join("|")}`)
     ) as `0x${string}`;
 
     // Save metadata to backend BEFORE creating on-chain, so the listener can
@@ -209,6 +209,7 @@ export default function CreateProjectPage() {
         title: title.trim() || "Untitled Project",
         description: description.trim() || null,
         metadataHash,
+        milestoneLabels,
       });
       if (!result.ok) {
         setValidationError(result.error || "Failed to save project metadata — please try again.");
