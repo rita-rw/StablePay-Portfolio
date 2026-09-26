@@ -454,6 +454,9 @@ export default function ProjectDetailPage() {
   // Chain receipt arrived, backend status not synced yet. Keeps the card in its
   // final disputed layout instead of an empty Processing state.
   const [confirmedDisputes, setConfirmedDisputes] = useState<Set<number>>(new Set());
+  // Chain receipt arrived, backend status not synced yet. Keeps the card in its
+  // final paid layout instead of an empty Processing state.
+  const [confirmedPaids, setConfirmedPaids] = useState<Set<number>>(new Set());
   const [escalationReasons, setEscalationReasons] = useState<Record<number, string>>({});
   const [escalationExpanded, setEscalationExpanded] = useState<Record<number, boolean>>({});
   const [disputeExpanded, setDisputeExpanded] = useState<Record<number, boolean>>({});
@@ -668,12 +671,24 @@ export default function ProjectDetailPage() {
   // When a tx confirms, add that milestone to the processing map (waiting for backend)
   useEffect(() => {
     if (!isApproveMilestoneSuccess || lastApprovedIndexRef.current === null) return;
-    setProcessingMilestones((prev) => new Map(prev).set(lastApprovedIndexRef.current!, "PAID"));
+    const index = lastApprovedIndexRef.current;
+    setProcessingMilestones((prev) => new Map(prev).set(index, "PAID"));
+    setConfirmedPaids((prev) => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
   }, [isApproveMilestoneSuccess]);
 
   useEffect(() => {
     if (!isClaimSuccess || lastClaimIndexRef.current === null) return;
-    setProcessingMilestones((prev) => new Map(prev).set(lastClaimIndexRef.current!, "PAID"));
+    const index = lastClaimIndexRef.current;
+    setProcessingMilestones((prev) => new Map(prev).set(index, "PAID"));
+    setConfirmedPaids((prev) => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
   }, [isClaimSuccess]);
 
   useEffect(() => {
@@ -810,6 +825,7 @@ export default function ProjectDetailPage() {
     const updated = new Map(processingMilestones);
     const syncedSubmits: number[] = [];
     const syncedDisputes: number[] = [];
+    const syncedPaids: number[] = [];
     let changed = false;
     for (const [idx, expectedStatus] of processingMilestones) {
       const m = enrichedMilestones.find((m) => m.milestoneIndex === idx);
@@ -818,6 +834,7 @@ export default function ProjectDetailPage() {
         changed = true;
         if (expectedStatus === "SUBMITTED") syncedSubmits.push(idx);
         if (expectedStatus === "DISPUTED") syncedDisputes.push(idx);
+        if (expectedStatus === "PAID") syncedPaids.push(idx);
       }
     }
     if (changed) setProcessingMilestones(updated);
@@ -832,6 +849,13 @@ export default function ProjectDetailPage() {
       setConfirmedDisputes((prev) => {
         const next = new Set(prev);
         for (const idx of syncedDisputes) next.delete(idx);
+        return next;
+      });
+    }
+    if (syncedPaids.length > 0) {
+      setConfirmedPaids((prev) => {
+        const next = new Set(prev);
+        for (const idx of syncedPaids) next.delete(idx);
         return next;
       });
     }
@@ -921,6 +945,7 @@ export default function ProjectDetailPage() {
   function milestoneHeaderStatus(index: number, status: string): string {
     const processing = processingMilestones.get(index);
     if (processing) return processing;
+    if (confirmedPaids.has(index) && status !== "REFUNDED" && status !== "RESOLVED") return "PAID";
     if (confirmedSubmits.has(index) && (status === "PENDING" || status === "DISPUTED")) return "SUBMITTED";
     if (confirmedDisputes.has(index) && status === "SUBMITTED") return "DISPUTED";
     return status;
@@ -1437,8 +1462,11 @@ export default function ProjectDetailPage() {
         <div className="space-y-3">
           <h2 className="text-lg font-semibold">Milestones</h2>
           {enrichedMilestones.map((m) => {
+            const locallyPaid = confirmedPaids.has(m.milestoneIndex);
             const displayStatus = (isCancelled || isCancelSuccess) && m.status !== "PAID"
               ? "REFUNDED"
+              : locallyPaid && m.status !== "REFUNDED" && m.status !== "RESOLVED"
+              ? "PAID"
               : m.status;
             const processingAs = processingMilestones.get(m.milestoneIndex);
             const locallySubmitted = confirmedSubmits.has(m.milestoneIndex);
@@ -1446,7 +1474,8 @@ export default function ProjectDetailPage() {
             const showProcessingBadge =
               processingAs != null &&
               !(processingAs === "SUBMITTED" && locallySubmitted) &&
-              !(processingAs === "DISPUTED" && locallyDisputed);
+              !(processingAs === "DISPUTED" && locallyDisputed) &&
+              !(processingAs === "PAID" && locallyPaid);
             const badgeStatus = locallySubmitted && (displayStatus === "PENDING" || displayStatus === "DISPUTED")
               ? "SUBMITTED"
               : locallyDisputed && displayStatus === "SUBMITTED"
@@ -1644,7 +1673,7 @@ export default function ProjectDetailPage() {
                       </div>
                     )}
                     {disputeBox}
-                    {displayStatus === "PAID" && !hadDispute && !processingMilestones.has(m.milestoneIndex) && (
+                    {displayStatus === "PAID" && !hadDispute && (locallyPaid || !processingMilestones.has(m.milestoneIndex)) && (
                       <div className="mt-3 border-l-2 border-blue-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md">
                         <p className="font-semibold text-zinc-500 uppercase tracking-wider text-[10px] mb-1">Approval</p>
                         <p className="text-zinc-800">Buyer accepted delivery and released payment.</p>
@@ -1654,7 +1683,7 @@ export default function ProjectDetailPage() {
                   </>
                 );
               })()}
-              {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && !locallyDisputed && (
+              {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && !locallyDisputed && !locallyPaid && (
                 <div className="mt-3 space-y-2">
                   {(() => {
                     const isThisMilestone = approveIndex === m.milestoneIndex;
@@ -1730,6 +1759,7 @@ export default function ProjectDetailPage() {
               )}
               {isSeller &&
                 (displayStatus === "SUBMITTED" || locallySubmitted) &&
+                !locallyPaid &&
                 (processingAs == null || processingAs === "SUBMITTED") && (
                 <div className="mt-3 space-y-2">
                   <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
