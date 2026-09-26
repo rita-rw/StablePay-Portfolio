@@ -923,6 +923,17 @@ export default function ProjectDetailPage() {
     return Date.now() - new Date(submittedAt).getTime() >= autoApprovalMs;
   }
 
+  function autoReleaseAt(submittedAt: string | null | undefined): Date | null {
+    if (!submittedAt || autoApprovalMs <= 0) return null;
+    const submitted = new Date(submittedAt);
+    if (Number.isNaN(submitted.getTime())) return null;
+    return new Date(submitted.getTime() + autoApprovalMs);
+  }
+
+  function formatAutoRelease(date: Date): string {
+    return date.toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" });
+  }
+
   function isDisputeResubmitWindow(disputeOpenedAt: string | null | undefined): boolean {
     if (!disputeOpenedAt || correctionWindowMs <= 0) return false;
     return Date.now() - new Date(disputeOpenedAt).getTime() < correctionWindowMs;
@@ -1735,6 +1746,18 @@ export default function ProjectDetailPage() {
               {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && !locallyDisputed && !locallyPaid && (
                 <div className="mt-3 space-y-2">
                   {(() => {
+                    const releaseAt = autoReleaseAt(m.submittedAt);
+                    if (!releaseAt) return null;
+                    const ready = releaseAt.getTime() <= Date.now();
+                    return (
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        {ready
+                          ? "The approval window has ended. This payment will be released to the seller automatically if you don't approve or dispute."
+                          : `If you don't approve or dispute, this payment will be released to the seller automatically on ${formatAutoRelease(releaseAt)}.`}
+                      </p>
+                    );
+                  })()}
+                  {(() => {
                     const isThisMilestone = approveIndex === m.milestoneIndex;
                     const isBusy = isApproveMilestonePending || isApproveMilestoneConfirming;
                     // Hide button on other milestones while one is being approved
@@ -1814,7 +1837,16 @@ export default function ProjectDetailPage() {
                   <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
                     <p className="text-sm font-medium text-blue-800">Delivery submitted</p>
                     <p className="text-xs text-blue-600">
-                      Waiting for buyer approval — auto-approval available in {dayLabel(autoApprovalDays)}
+                      {(() => {
+                        const releaseAt = autoReleaseAt(m.submittedAt);
+                        if (!releaseAt) {
+                          return `Waiting for buyer approval — auto-approval available in ${dayLabel(autoApprovalDays)}`;
+                        }
+                        if (releaseAt.getTime() <= Date.now()) {
+                          return "The approval window has ended. You can release this payment.";
+                        }
+                        return `Waiting for buyer approval. You can release this payment automatically on ${formatAutoRelease(releaseAt)}.`;
+                      })()}
                     </p>
                   </div>
                   {isAutoApprovalReady(m.submittedAt) && (
