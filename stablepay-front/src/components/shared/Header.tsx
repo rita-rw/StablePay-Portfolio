@@ -21,8 +21,8 @@ const ERC20_BALANCE_ABI = [
 ] as const;
 
 export default function Header() {
-  const { address, isConnected, chainId: wagmiChainId, connector } = useAccount();
-  const { user, isRegistered } = useUser();
+  const { address, isConnected, chainId: wagmiChainId, connector, status } = useAccount();
+  const { user, isRegistered, checked } = useUser();
   const [mounted, setMounted] = useState(false);
   /** Actual wallet chain — prefer the connected connector's provider (not window.ethereum). */
   const [walletChainId, setWalletChainId] = useState<number | undefined>(undefined);
@@ -102,6 +102,7 @@ export default function Header() {
 
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());
   const showNav = mounted && isConnected && (isRegistered || isPlatform);
+  const sessionPending = !mounted || status === "connecting" || status === "reconnecting" || (mounted && isConnected && !checked);
   const activeChainId =
     typeof walletChainId === "number"
       ? walletChainId
@@ -134,7 +135,7 @@ export default function Header() {
             <span className={`text-xl font-bold ${isLanding ? "text-zinc-900" : "gradient-text"}`}>StablePay</span>
           </Link>
 
-          {isLanding && !showNav && (
+          {isLanding && !showNav && !sessionPending && (
             <nav className="hidden md:flex items-center gap-8 text-sm">
               <Link href="/#how-it-works" className="text-zinc-500 hover:text-zinc-900 transition-colors">How it works</Link>
               <Link href="/#pricing" className="text-zinc-500 hover:text-zinc-900 transition-colors">Pricing</Link>

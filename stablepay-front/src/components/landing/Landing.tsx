@@ -69,9 +69,9 @@ const features = [
 ];
 
 export default function Landing() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, status } = useAccount();
   const { openConnectModal } = useConnectModal();
-  const { user, isRegistered } = useUser();
+  const { user, isRegistered, checked } = useUser();
   const [mounted, setMounted] = useState(false);
   const wasDisconnectedRef = useRef(false);
   useEffect(() => {
@@ -81,6 +81,7 @@ export default function Landing() {
 
   const connected = mounted && isConnected;
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());
+  const sessionPending = !mounted || status === "connecting" || status === "reconnecting" || (connected && !checked);
   const ctaHref = connected && isPlatform ? "/projects"
     : connected && isRegistered ? "/projects"
     : connected ? "/register"
@@ -103,6 +104,7 @@ export default function Landing() {
     }
   }, [connected]);
 
+  if (sessionPending) return null;
   if (connected && isPlatform) return <AdminDashboard />;
   if (connected && isRegistered) return <Dashboard />;
 

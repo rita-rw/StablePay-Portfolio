@@ -6,12 +6,37 @@ import { useAccount, useReadContracts, useWalletClient } from "wagmi";
 import { type Abi, formatUnits } from "viem";
 import { useUser } from "@/hooks/useUser";
 import { fetchUserProjects } from "@/services/projects";
-import { deriveProjectStatus, getMilestoneStatus, decodeTitle } from "@/lib/formatters";
+import { deriveProjectStatus, getMilestoneStatus, decodeTitle, calcFeeBase } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
-import { Layers, Plus, ArrowRight, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Wallet, Plus, ArrowRight, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
 
 const abi = StablePayEscrowABI.abi as Abi;
+
+type TodoAction = "review" | "dispute" | "fund" | "accept" | "submit";
+
+const ACTION_LABEL: Record<TodoAction, string> = {
+  review: "Review delivery",
+  dispute: "Respond to dispute",
+  fund: "Fund project",
+  accept: "Accept project",
+  submit: "Submit delivery",
+};
+
+const ACTION_RANK: Record<TodoAction, number> = {
+  review: 0,
+  dispute: 1,
+  fund: 2,
+  accept: 3,
+  submit: 4,
+};
+
+const PLATFORM_FEE_BPS = 250n;
+
+/** Seller's net on a released amount. Same 2.5% split as the payment receipt. */
+function sellerNet(base: bigint): bigint {
+  return base - calcFeeBase(base, PLATFORM_FEE_BPS);
+}
 
 export default function Dashboard() {
   const { address } = useAccount();
@@ -21,11 +46,22 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!address) return;
-    fetchUserProjects(address, walletClient ?? undefined)
-      .then(setEscrows)
-      .catch(() => setEscrows([]))
-      .finally(() => setLoading(false));
+    if (!address || !walletClient) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchUserProjects(address, walletClient)
+      .then((data) => {
+        if (!cancelled) setEscrows(data);
+      })
+      .catch(() => {
+        if (!cancelled) setEscrows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [address, walletClient]);
 
   // On-chain status reads
@@ -44,16 +80,23 @@ export default function Dashboard() {
     return calls;
   }, [escrows]);
 
-  const { data: onChainData } = useReadContracts({
+  const { data: onChainData, isError: chainError } = useReadContracts({
     contracts,
     query: { enabled: contracts.length > 0 },
   });
 
-  // Derive stats from on-chain data
-  const stats = useMemo(() => {
-    const result = { active: 0, completed: 0, disputed: 0, totalUSDC: BigInt(0) };
-    if (!onChainData || escrows.length === 0) return result;
-
+  const chainProjects = useMemo(() => {
+    if (!onChainData || escrows.length === 0) return [];
+    const me = address?.toLowerCase();
+    const enriched: {
+      escrow: Escrow;
+      status: string;
+      role: string;
+      hasDispute: boolean;
+      paidOut: bigint;
+      received: bigint;
+      action: TodoAction | null;
+    }[] = [];
     let idx = 0;
     for (const e of escrows) {
       const sellerAccepted = onChainData[idx]?.result as boolean ?? false; idx++;
@@ -61,58 +104,84 @@ export default function Dashboard() {
       const cancelled = onChainData[idx]?.result as boolean ?? false; idx++;
       const milestoneStatuses: string[] = [];
       let hasDispute = false;
+      let paidOut = BigInt(0);
+      let received = BigInt(0);
+      const isBuyer = e.buyer.toLowerCase() === me;
+      const isSeller = e.seller.toLowerCase() === me;
       for (let i = 0; i < e.milestoneCount; i++) {
         const r = onChainData[idx]?.result as [bigint, number, string, bigint, string, bigint, string] | undefined;
         if (r) {
           const s = getMilestoneStatus(Number(r[1]));
           milestoneStatuses.push(s);
           if (s === "DISPUTED") hasDispute = true;
+          const row = e.milestones?.find((m) => m.milestoneIndex === i);
+          const amount = BigInt(r[0]);
+          if (isBuyer) {
+            if (s === "PAID") paidOut += amount;
+            else if (s === "RESOLVED" && row?.sellerAward) paidOut += BigInt(row.sellerAward);
+          }
+          if (isSeller) {
+            if (s === "RESOLVED" && row?.sellerAward) received += sellerNet(BigInt(row.sellerAward));
+            else if (s === "PAID") {
+              const base = row?.disputeOpenedAt != null && row.sellerAward ? BigInt(row.sellerAward) : amount;
+              received += sellerNet(base);
+            }
+          }
         }
         idx++;
       }
       const status = deriveProjectStatus(funded, cancelled, sellerAccepted, milestoneStatuses);
-      if (status === "COMPLETED" || status === "CANCELLED" || status === "SELLER_REJECTED") result.completed++;
-      else result.active++;
-      if (hasDispute) result.disputed++;
-      result.totalUSDC += BigInt(e.totalAmount);
-    }
-    return result;
-  }, [onChainData, escrows]);
-
-  // Recent projects (last 3)
-  const recentProjects = useMemo(() => {
-    if (!onChainData || escrows.length === 0) return [];
-
-    const enriched: { escrow: Escrow; status: string; role: string }[] = [];
-    let idx = 0;
-    for (const e of escrows) {
-      const sellerAccepted = onChainData[idx]?.result as boolean ?? false; idx++;
-      const funded = onChainData[idx]?.result as boolean ?? false; idx++;
-      const cancelled = onChainData[idx]?.result as boolean ?? false; idx++;
-      const milestoneStatuses: string[] = [];
-      for (let i = 0; i < e.milestoneCount; i++) {
-        const r = onChainData[idx]?.result as [bigint, number, string, bigint, string, bigint, string] | undefined;
-        if (r) milestoneStatuses.push(getMilestoneStatus(Number(r[1])));
-        idx++;
+      let action: TodoAction | null = null;
+      if (!cancelled && me) {
+        if (isBuyer && milestoneStatuses.includes("SUBMITTED")) action = "review";
+        else if (isSeller && milestoneStatuses.includes("DISPUTED")) action = "dispute";
+        else if (isBuyer && sellerAccepted && !funded) action = "fund";
+        else if (isSeller && !sellerAccepted) action = "accept";
+        else if (isSeller && funded && milestoneStatuses.includes("PENDING")) action = "submit";
       }
-      const status = deriveProjectStatus(funded, cancelled, sellerAccepted, milestoneStatuses);
-      const role = e.buyer.toLowerCase() === address?.toLowerCase() ? "Buyer" : "Seller";
-      enriched.push({ escrow: e, status, role });
+      enriched.push({
+        escrow: e,
+        status,
+        role: isBuyer ? "Buyer" : "Seller",
+        hasDispute,
+        paidOut,
+        received,
+        action,
+      });
     }
-    enriched.sort((a, b) => new Date(b.escrow.createdAt).getTime() - new Date(a.escrow.createdAt).getTime());
-    return enriched.slice(0, 3);
+    return enriched;
   }, [onChainData, escrows, address]);
 
-  const statusColor: Record<string, string> = {
-    COMPLETED: "bg-purple-50 border border-purple-200 text-purple-700",
-    IN_PROGRESS: "bg-amber-50 border border-amber-200 text-amber-700",
-    FUNDED: "bg-emerald-50 border border-emerald-200 text-emerald-700",
-    CREATED: "bg-zinc-50 border border-zinc-200 text-zinc-600",
-    SELLER_ACCEPTED: "bg-blue-50 border border-blue-200 text-blue-700",
-    CANCELLED: "bg-red-50 border border-red-200 text-red-700",
-  };
+  const stats = useMemo(() => {
+    const result = { active: 0, completed: 0, disputed: 0, paidOut: BigInt(0), received: BigInt(0) };
+    for (const project of chainProjects) {
+      if (project.status === "COMPLETED" || project.status === "CANCELLED" || project.status === "SELLER_REJECTED") result.completed++;
+      else result.active++;
+      if (project.hasDispute) result.disputed++;
+      result.paidOut += project.paidOut;
+      result.received += project.received;
+    }
+    return result;
+  }, [chainProjects]);
 
-  if (loading) {
+  const todos = useMemo(() => {
+    return chainProjects
+      .filter((project) => project.action !== null)
+      .sort((a, b) => {
+        const rank = ACTION_RANK[a.action!] - ACTION_RANK[b.action!];
+        if (rank !== 0) return rank;
+        return new Date(b.escrow.createdAt).getTime() - new Date(a.escrow.createdAt).getTime();
+      });
+  }, [chainProjects]);
+
+  const me = address?.toLowerCase();
+  const actsAsBuyer = escrows.some((e) => e.buyer.toLowerCase() === me);
+  const actsAsSeller = escrows.some((e) => e.seller.toLowerCase() === me);
+  const showReceivedLine = actsAsBuyer && actsAsSeller;
+  const moneyLabel = actsAsSeller && !actsAsBuyer ? "Received" : "Paid out";
+  const moneyAmount = actsAsSeller && !actsAsBuyer ? stats.received : stats.paidOut;
+
+  if (loading || (escrows.length > 0 && !onChainData && !chainError)) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <p className="text-zinc-500">Loading dashboard...</p>
@@ -159,10 +228,18 @@ export default function Dashboard() {
           </div>
           <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
             <div className="flex items-center gap-2 mb-3">
-              <Layers className="h-4 w-4 text-primary" />
-              <span className="text-xs font-medium text-zinc-500">Total Volume</span>
+              <Wallet className="h-4 w-4 text-primary" />
+              <span className="text-xs font-medium text-zinc-500">{moneyLabel}</span>
             </div>
-            <p className="text-2xl font-bold text-zinc-900">{formatUnits(stats.totalUSDC, 6)} <span className="text-sm font-normal text-zinc-400">USDC</span></p>
+            <p className="text-2xl font-bold leading-tight text-zinc-900 tabular-nums whitespace-nowrap">
+              {formatUnits(moneyAmount, 6)}
+            </p>
+            <p className="mt-1 text-sm font-normal text-zinc-400">USDC</p>
+            {showReceivedLine && (
+              <p className="mt-2 text-xs text-zinc-500">
+                Received {formatUnits(stats.received, 6)} USDC
+              </p>
+            )}
           </div>
         </div>
 
@@ -183,28 +260,34 @@ export default function Dashboard() {
           </Link>
         </div>
 
-        {/* Recent projects */}
+        {/* Tasks waiting on this wallet */}
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900 mb-4">Recent Projects</h2>
-          {recentProjects.length === 0 ? (
+          <h2 className="text-lg font-semibold text-zinc-900 mb-4">To do</h2>
+          {todos.length === 0 ? (
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-10 text-center">
-              <p className="text-zinc-500 mb-4">No projects yet. Create your first escrow to get started.</p>
-              <Link
-                href="/projects/new"
-                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-              >
-                Create Project <ArrowRight className="h-4 w-4" />
-              </Link>
+              {escrows.length === 0 ? (
+                <>
+                  <p className="text-zinc-500 mb-4">No projects yet. Create your first escrow to get started.</p>
+                  <Link
+                    href="/projects/new"
+                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                  >
+                    Create Project <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </>
+              ) : (
+                <p className="text-zinc-500">Nothing needs your action right now.</p>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {recentProjects.map(({ escrow, status, role }) => (
+              {todos.map(({ escrow, role, action }) => (
                 <Link
                   key={escrow.id}
                   href={`/projects/${escrow.id}`}
                   className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)] hover:border-zinc-400 hover:shadow-md transition-all group"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="font-semibold text-zinc-900 group-hover:text-primary transition-colors">
                         {escrow.title ? decodeTitle(escrow.title) : `${escrow.id.slice(0, 6)}...${escrow.id.slice(-4)}`}
@@ -213,8 +296,8 @@ export default function Dashboard() {
                         {role} &middot; {escrow.milestoneCount} milestone{escrow.milestoneCount !== 1 ? "s" : ""} &middot; {formatUnits(BigInt(escrow.totalAmount), 6)} USDC
                       </p>
                     </div>
-                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${statusColor[status] ?? "text-zinc-500"}`}>
-                      {status.replace("_", " ")}
+                    <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                      {ACTION_LABEL[action!]}
                     </span>
                   </div>
                 </Link>
