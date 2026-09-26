@@ -145,6 +145,32 @@ export function statusBadge(status: string): { label: string; color: string } {
   return { label, color };
 }
 
+export function milestoneStatusBadge(status: string, hadDispute = false): { label: string; color: string } {
+  const disputeRefunded = status === "REFUNDED" && hadDispute;
+  const resolvedPaid = status === "RESOLVED" || (status === "PAID" && hadDispute);
+  const label = disputeRefunded
+    ? "DISPUTE REFUNDED"
+    : resolvedPaid
+    ? "RESOLVED & PAID"
+    : status;
+
+  const color = disputeRefunded
+    ? "bg-red-50 border-red-200 text-red-700"
+    : status === "PAID" || status === "RESOLVED"
+    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+    : status === "SUBMITTED"
+    ? "bg-blue-50 border-blue-200 text-blue-700"
+    : status === "DISPUTED"
+    ? "bg-red-50 border-red-200 text-red-700"
+    : status === "ESCALATED"
+    ? "bg-orange-50 border-orange-200 text-orange-700"
+    : status === "REFUNDED"
+    ? "bg-zinc-50 border-zinc-300 text-zinc-600"
+    : "bg-zinc-50 border-zinc-200 text-zinc-500";
+
+  return { label, color };
+}
+
 export function getMilestoneStatus(statusCode: number): string {
   return MILESTONE_STATUS_MAP[statusCode] ?? "PENDING";
 }

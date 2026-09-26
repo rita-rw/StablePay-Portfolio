@@ -9,7 +9,7 @@ import { Pencil, Copy, Check } from "lucide-react";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { authFetch } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
 
@@ -1452,6 +1452,7 @@ export default function ProjectDetailPage() {
               : locallyDisputed && displayStatus === "SUBMITTED"
               ? "DISPUTED"
               : displayStatus;
+            const milestoneBadge = milestoneStatusBadge(badgeStatus, !!m.disputeOpenedAt);
             const submittingThis =
               (isSubmitPending || isSubmitConfirming) && submitIndex === m.milestoneIndex;
             const disputingThis =
@@ -1472,28 +1473,8 @@ export default function ProjectDetailPage() {
                     Processing...
                   </span>
                 ) : (
-                  <span className={`rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide border ${
-                    badgeStatus === "PAID"
-                      ? "bg-zinc-800 border-zinc-800 text-white"
-                      : badgeStatus === "SUBMITTED"
-                      ? "bg-zinc-700 border-zinc-700 text-white"
-                      : badgeStatus === "DISPUTED"
-                      ? "bg-zinc-100 border-red-300 text-red-600"
-                      : badgeStatus === "ESCALATED"
-                      ? "bg-orange-50 border-orange-400 text-orange-600"
-                      : badgeStatus === "REFUNDED"
-                      ? "bg-zinc-800 border-zinc-800 text-white"
-                      : badgeStatus === "RESOLVED"
-                      ? "bg-zinc-800 border-zinc-800 text-white"
-                      : "bg-zinc-100 border-zinc-200 text-zinc-500"
-                  }`}>
-                    {badgeStatus === "RESOLVED"
-                      ? "RESOLVED & PAID"
-                      : badgeStatus === "PAID" && !!m.disputeOpenedAt
-                      ? "RESOLVED & PAID"
-                      : badgeStatus === "REFUNDED" && !!m.disputeOpenedAt
-                      ? "DISPUTE REFUNDED"
-                      : badgeStatus}
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${milestoneBadge.color}`}>
+                    {milestoneBadge.label}
                   </span>
                 )}
               </div>
