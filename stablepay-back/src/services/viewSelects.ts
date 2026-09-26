@@ -19,6 +19,10 @@ export const publicMilestoneSelect = {
   amount: true,
   label: true,
   status: true,
+  deliveryReference: true,
+  // Already readable on-chain. Included here so the delivery card and the
+  // auto-release line can render in the same paint, before the wallet signature.
+  submittedAt: true,
 } satisfies Prisma.MilestoneSelect;
 
 export const participantMilestoneSelect = {

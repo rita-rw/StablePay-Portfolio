@@ -134,7 +134,7 @@ export default function Header() {
         </Link>
 
         <div className="absolute top-1/2 flex -translate-y-1/2 items-center left-[max(17rem,calc((100%-56rem)/2+1rem))]">
-          {isLanding && !showNav && !sessionPending && (
+          {(pathname === "/" || pathname === "/faq") && !showNav && !sessionPending && (
             <nav className="hidden md:flex items-center gap-8 text-sm">
               <Link href="/#how-it-works" className="text-zinc-500 hover:text-zinc-900 transition-colors">How it works</Link>
               <Link href="/#pricing" className="text-zinc-500 hover:text-zinc-900 transition-colors">Pricing</Link>
@@ -190,6 +190,7 @@ export default function Header() {
                 if (!ready) return null;
 
                 if (!account) {
+                  if (status === "connecting" || status === "reconnecting") return null;
                   return (
                     <button
                       onClick={openConnectModal}

@@ -8,6 +8,26 @@ import type { User } from "@/types/user";
 export type { User };
 
 const userCache = new Map<string, User | null>();
+const storedUserKey = (address: string) => `stablepay:user:${address.toLowerCase()}`;
+
+function readStoredUser(address: string): User | null | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = sessionStorage.getItem(storedUserKey(address));
+    if (raw === null) return undefined;
+    return raw === "null" ? null : (JSON.parse(raw) as User);
+  } catch {
+    return undefined;
+  }
+}
+
+function writeStoredUser(address: string, user: User | null): void {
+  try {
+    sessionStorage.setItem(storedUserKey(address), user ? JSON.stringify(user) : "null");
+  } catch {
+    // Private mode can reject storage; the in-memory cache still works.
+  }
+}
 
 export function useUser() {
   const { address, isConnected, status } = useAccount();
@@ -18,9 +38,9 @@ export function useUser() {
   const [checked, setChecked] = useState(hasCachedUser);
 
   useEffect(() => {
-    if (status === "connecting" || status === "reconnecting") return;
-
-    if (!isConnected || !address) {
+    if (status === "connecting" || status === "reconnecting") {
+      if (!address) return;
+    } else if (!isConnected || !address) {
       setUser(null);
       setLoading(false);
       setChecked(true);
@@ -31,18 +51,28 @@ export function useUser() {
     const key = address.toLowerCase();
     const load = () => {
       if (!userCache.has(key)) {
-        setLoading(true);
-        setChecked(false);
+        const stored = readStoredUser(key);
+        if (stored !== undefined) {
+          userCache.set(key, stored);
+          setUser(stored);
+          setChecked(true);
+          setLoading(false);
+        } else {
+          setLoading(true);
+          setChecked(false);
+        }
       }
       fetchUser(address)
         .then((data) => {
           if (cancelled) return;
           userCache.set(key, data);
+          writeStoredUser(key, data);
           setUser(data);
         })
         .catch(() => {
           if (cancelled) return;
           userCache.set(key, null);
+          writeStoredUser(key, null);
           setUser(null);
         })
         .finally(() => {

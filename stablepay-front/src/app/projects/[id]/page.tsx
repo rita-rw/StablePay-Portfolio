@@ -80,6 +80,9 @@ export default function ProjectDetailPage() {
     autoApprovalDays?: number | null;
     disputeTimeoutDays?: number | null;
   } | null>(null);
+  const [metaReady, setMetaReady] = useState(false);
+  const [milestonesLoaded, setMilestonesLoaded] = useState(false);
+  const [eventsLoaded, setEventsLoaded] = useState(false);
   const [milestones, setMilestones] = useState<{
     milestoneIndex: number;
     amount: string;
@@ -117,37 +120,103 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     const apiUrl = API_URL;
     if (!apiUrl || !escrowAddress) return;
-    const doFetch = walletClient
-      ? authFetch(`${apiUrl}/projects/detail/${escrowAddress}`, walletClient)
-      : fetch(`${apiUrl}/projects/detail/${escrowAddress}`);
-    doFetch
-      .then((res) => (res.ok ? res.json() : null))
+    let cancelled = false;
+
+    const applyDetail = (data: {
+      title?: string | null;
+      description?: string | null;
+      buyerCompany?: string | null;
+      sellerCompany?: string | null;
+      correctionWindowDays?: number | null;
+      autoApprovalDays?: number | null;
+      disputeTimeoutDays?: number | null;
+    }) => {
+      setEscrowMeta((prev) => ({
+        title: data.title ?? prev?.title ?? null,
+        description: data.description ?? prev?.description ?? null,
+        buyerCompany: data.buyerCompany ?? prev?.buyerCompany ?? null,
+        sellerCompany: data.sellerCompany ?? prev?.sellerCompany ?? null,
+        correctionWindowDays: data.correctionWindowDays ?? prev?.correctionWindowDays ?? null,
+        autoApprovalDays: data.autoApprovalDays ?? prev?.autoApprovalDays ?? null,
+        disputeTimeoutDays: data.disputeTimeoutDays ?? prev?.disputeTimeoutDays ?? null,
+      }));
+      setMetaReady(true);
+    };
+
+    // Kept off walletClient on purpose. A signature must not cancel this read,
+    // or the page paints Untitled Project from the chain data alone.
+    fetch(`${apiUrl}/projects/detail/${escrowAddress}`)
+      .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
-        if (data)
-          setEscrowMeta({
-            title: data.title ?? null,
-            description: data.description ?? null,
-            buyerCompany: data.buyerCompany ?? null,
-            sellerCompany: data.sellerCompany ?? null,
-            correctionWindowDays: data.correctionWindowDays ?? null,
-            autoApprovalDays: data.autoApprovalDays ?? null,
-            disputeTimeoutDays: data.disputeTimeoutDays ?? null,
-          });
+        if (!cancelled && data) applyDetail(data);
       })
-      .catch(() => setEscrowMeta(null));
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [escrowAddress]);
+
+  useEffect(() => {
+    const apiUrl = API_URL;
+    if (!apiUrl || !escrowAddress || !walletClient) return;
+    let cancelled = false;
+    authFetch(`${apiUrl}/projects/detail/${escrowAddress}`, walletClient)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setEscrowMeta((prev) => ({
+          title: data.title ?? prev?.title ?? null,
+          description: data.description ?? prev?.description ?? null,
+          buyerCompany: data.buyerCompany ?? prev?.buyerCompany ?? null,
+          sellerCompany: data.sellerCompany ?? prev?.sellerCompany ?? null,
+          correctionWindowDays: data.correctionWindowDays ?? prev?.correctionWindowDays ?? null,
+          autoApprovalDays: data.autoApprovalDays ?? prev?.autoApprovalDays ?? null,
+          disputeTimeoutDays: data.disputeTimeoutDays ?? prev?.disputeTimeoutDays ?? null,
+        }));
+        setMetaReady(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [escrowAddress, walletClient]);
+
+  const applyMilestones = useCallback((data: unknown) => {
+    if (!Array.isArray(data)) return;
+    setMilestones((prev) => {
+      const incoming = data as typeof prev;
+      if (prev.length === 0) return incoming;
+      return incoming.map((m) => {
+        const old = prev.find((p) => p.milestoneIndex === m.milestoneIndex);
+        if (!old) return m;
+        return {
+          ...old,
+          ...m,
+          label: m.label ?? old.label,
+          deliveryReference: m.deliveryReference ?? old.deliveryReference,
+          submittedAt: m.submittedAt ?? old.submittedAt,
+          disputeReason: m.disputeReason ?? old.disputeReason,
+        };
+      });
+    });
+    setMilestonesLoaded(true);
+  }, []);
 
   const fetchMilestones = useCallback(() => {
     const apiUrl = API_URL;
     if (!apiUrl || !escrowAddress) return;
-    const doFetch = walletClient
-      ? authFetch(`${apiUrl}/projects/${escrowAddress}/milestones`, walletClient)
-      : fetch(`${apiUrl}/projects/${escrowAddress}/milestones`);
-    doFetch
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setMilestones(Array.isArray(data) ? data : []))
-      .catch(() => setMilestones([]));
-  }, [escrowAddress, walletClient]);
+    fetch(`${apiUrl}/projects/${escrowAddress}/milestones`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => applyMilestones(data))
+      .catch(() => {});
+    if (walletClient) {
+      authFetch(`${apiUrl}/projects/${escrowAddress}/milestones`, walletClient)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => applyMilestones(data))
+        .catch(() => {});
+    }
+  }, [escrowAddress, walletClient, applyMilestones]);
 
   useEffect(() => {
     fetchMilestones();
@@ -157,9 +226,13 @@ export default function ProjectDetailPage() {
     const apiUrl = API_URL;
     if (!apiUrl || !escrowAddress) return;
     fetch(`${apiUrl}/projects/${escrowAddress}/events`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setEvents(Array.isArray(data) ? data : []))
-      .catch(() => setEvents([]));
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        setEvents(data);
+        setEventsLoaded(true);
+      })
+      .catch(() => {});
   }, [escrowAddress]);
 
   useEffect(() => {
@@ -1072,13 +1145,26 @@ export default function ProjectDetailPage() {
     });
   }
 
-  if (!mounted || status === "connecting" || status === "reconnecting" || !isConnected) {
+  const sessionPending = !mounted || status === "connecting" || status === "reconnecting";
+  const pageReady =
+    metaReady &&
+    milestonesLoaded &&
+    eventsLoaded &&
+    isFunded !== undefined &&
+    totalAmount !== undefined &&
+    seller !== undefined &&
+    buyer !== undefined &&
+    milestoneCount !== undefined;
+  if (!sessionPending && !isConnected) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
         <p className="text-lg text-zinc-800">Connect your wallet to view this project</p>
         <ConnectButton />
       </div>
     );
+  }
+  if (!pageReady) {
+    return <div className="min-h-screen bg-zinc-50" />;
   }
 
   const displayAmount = totalAmount
@@ -1088,7 +1174,7 @@ export default function ProjectDetailPage() {
   return (
     <div className="min-h-screen bg-zinc-50">
     <div className="mx-auto max-w-4xl px-4 py-6">
-      <div className={`flex items-start justify-between gap-4 ${escrowMeta?.description ? "mb-1" : "mb-6"}`}>
+      <div className={`flex items-start justify-between gap-4 ${!metaReady || escrowMeta?.description ? "mb-1" : "mb-6"}`}>
       <div className="min-w-0 flex-1">
       {isEditingTitle ? (
         <div>
@@ -1127,9 +1213,11 @@ export default function ProjectDetailPage() {
           {titleError && <p className="mt-2 text-xs text-red-500">{titleError}</p>}
         </div>
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex min-h-9 items-center gap-2">
+          {metaReady && (
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">{displayTitle}</h1>
-          {isBuyer && (
+          )}
+          {metaReady && isBuyer && (
             <button
               type="button"
               onClick={startEditTitle}
@@ -1150,11 +1238,13 @@ export default function ProjectDetailPage() {
           ← Back to Projects
         </button>
       </div>
-      {escrowMeta?.description && (
+      {!metaReady ? (
+        <div className="mb-6 min-h-5" aria-hidden />
+      ) : escrowMeta?.description ? (
         <p className="mb-6 text-sm text-zinc-900">
           {escrowMeta.description}
         </p>
-      )}
+      ) : null}
 
       <div className="mb-6 rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
         <div className="grid grid-cols-2 gap-4 mb-4">
@@ -1456,7 +1546,7 @@ export default function ProjectDetailPage() {
 
       {activeTab === "overview" && (<>
 
-      {!(isFunded || isFundSuccess) && enrichedMilestones.length > 0 && (
+      {isFunded === false && !isFundSuccess && enrichedMilestones.length > 0 && (
         <div className="mb-6 space-y-3">
           <h2 className="text-lg font-semibold">Milestones</h2>
           {enrichedMilestones.map((m) => {

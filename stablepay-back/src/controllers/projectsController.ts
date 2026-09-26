@@ -28,6 +28,21 @@ import {
 import { lookupCompanies } from "../services/userService";
 import { syncSingleEscrow } from "../listener";
 
+const syncInFlight = new Set<string>();
+
+function syncEscrowInBackground(escrowAddress: string): void {
+  const key = escrowAddress.toLowerCase();
+  if (syncInFlight.has(key)) return;
+  syncInFlight.add(key);
+  void syncSingleEscrow(escrowAddress)
+    .catch((syncErr) => {
+      console.error("[API] syncSingleEscrow failed for", escrowAddress, syncErr);
+    })
+    .finally(() => {
+      syncInFlight.delete(key);
+    });
+}
+
 function isParticipant(signerAddress: string | undefined, escrow: { buyer: string; seller: string }): boolean {
   if (!signerAddress) return false;
   return [escrow.buyer, escrow.seller].some((p) => p.toLowerCase() === signerAddress.toLowerCase());
@@ -243,8 +258,16 @@ export async function getProjectDetail(req: AuthRequest, res: Response): Promise
   }
 
   try {
-    await syncSingleEscrow(escrowAddress);
-    const parties = await findEscrowPartiesById(escrowAddress);
+    // Title and description are already stored. Don't wait for the chain sync
+    // on a normal page load — that read takes a few seconds and the heading
+    // stays blank until it finishes. Sync still runs afterwards.
+    let parties = await findEscrowPartiesById(escrowAddress);
+    if (!parties) {
+      await syncSingleEscrow(escrowAddress);
+      parties = await findEscrowPartiesById(escrowAddress);
+    } else {
+      syncEscrowInBackground(escrowAddress);
+    }
     if (!parties) {
       res.status(404).json({ error: "Escrow not found" });
       return;
@@ -260,11 +283,8 @@ export async function getProjectDetail(req: AuthRequest, res: Response): Promise
       return;
     }
 
-    if (!participantView) {
-      res.json(escrow);
-      return;
-    }
-
+    // Company name is already on the public profile. Attach it before the
+    // auth signature so the counterparty line doesn't pop in afterwards.
     const companyMap = await lookupCompanies([escrow.buyer, escrow.seller]);
     res.json({
       ...escrow,
@@ -345,13 +365,17 @@ export async function getEvents(req: AuthRequest, res: Response): Promise<void> 
   }
 
   try {
-    try {
-      await syncSingleEscrow(escrowAddress);
-    } catch (syncErr) {
-      console.error("[API] syncSingleEscrow failed for", escrowAddress, syncErr);
+    // The count is built from stored rows. Waiting for a chain read here is
+    // what makes "(6)" appear a moment after the rest of the page.
+    let escrow = await findEscrowById(escrowAddress);
+    if (!escrow) {
+      await syncSingleEscrow(escrowAddress).catch((syncErr) => {
+        console.error("[API] syncSingleEscrow failed for", escrowAddress, syncErr);
+      });
+      escrow = await findEscrowById(escrowAddress);
+    } else {
+      syncEscrowInBackground(escrowAddress);
     }
-
-    const escrow = await findEscrowById(escrowAddress);
 
     if (!escrow) {
       res.status(404).json({ error: "Escrow not found" });
