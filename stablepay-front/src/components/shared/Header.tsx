@@ -125,15 +125,15 @@ export default function Header() {
 
   return (
     <header className={`relative sticky top-0 z-50 border-b print:hidden ${isLanding ? "bg-white border-zinc-200" : "glass border-border/50"}`}>
-      <div className="grid h-16 w-full grid-cols-[minmax(0,1fr)_56rem_minmax(0,1fr)] items-center">
-        <Link href="/" className="flex min-w-0 items-center gap-2.5 overflow-hidden pl-8 sm:pl-16">
+      <div className="flex h-16 w-full items-center">
+        <Link href="/" className="z-10 flex shrink-0 items-center gap-2.5 pl-8 sm:pl-16">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg [print-color-adjust:exact]" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.45), inset 0 1px 0 hsl(210 100% 80% / 0.15)" }}>
             <Shield className="h-5 w-5 text-primary-foreground" />
           </div>
           <span className={`text-xl font-bold ${isLanding ? "text-zinc-900" : "gradient-text"}`}>StablePay</span>
         </Link>
 
-        <div className="flex h-full items-center px-4">
+        <div className="absolute top-1/2 flex -translate-y-1/2 items-center left-[max(17rem,calc((100%-56rem)/2+1rem))]">
           {isLanding && !showNav && !sessionPending && (
             <nav className="hidden md:flex items-center gap-8 text-sm">
               <Link href="/#how-it-works" className="text-zinc-500 hover:text-zinc-900 transition-colors">How it works</Link>
@@ -162,8 +162,6 @@ export default function Header() {
             </nav>
           )}
         </div>
-
-        <div />
       </div>
       <div className="absolute right-8 top-1/2 flex -translate-y-1/2 items-center gap-4 whitespace-nowrap">
           {showNav && !isPlatform && user?.companyName && (
