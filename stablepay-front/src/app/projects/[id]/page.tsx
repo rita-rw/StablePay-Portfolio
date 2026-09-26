@@ -9,7 +9,7 @@ import { Pencil, Copy, Check } from "lucide-react";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { authFetch } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
 
@@ -918,6 +918,35 @@ export default function ProjectDetailPage() {
     });
   }
 
+  function milestoneHeaderStatus(index: number, status: string): string {
+    const processing = processingMilestones.get(index);
+    if (processing) return processing;
+    if (confirmedSubmits.has(index) && (status === "PENDING" || status === "DISPUTED")) return "SUBMITTED";
+    if (confirmedDisputes.has(index) && status === "SUBMITTED") return "DISPUTED";
+    return status;
+  }
+
+  const headerStatus = getDisplayStatus("CREATED", {
+    sellerAccepted: Boolean(sellerAccepted || isAcceptSuccess),
+    funded: Boolean(isFunded || isFundSuccess),
+    cancelled: Boolean(isCancelled || isCancelSuccess || isRejectSuccess),
+    hasDispute: enrichedMilestones.some((m) => {
+      const status = milestoneHeaderStatus(m.milestoneIndex, m.status);
+      return status === "DISPUTED" || status === "ESCALATED";
+    }),
+    allPaid:
+      enrichedMilestones.length > 0 &&
+      enrichedMilestones.every((m) => {
+        const status = milestoneHeaderStatus(m.milestoneIndex, m.status);
+        return status === "PAID" || status === "RESOLVED" || status === "REFUNDED";
+      }),
+    hasSubmitted: enrichedMilestones.some((m) => {
+      const status = milestoneHeaderStatus(m.milestoneIndex, m.status);
+      return status === "SUBMITTED" || status === "DISPUTED" || status === "ESCALATED" || status === "RESOLVED" || status === "PAID";
+    }),
+  });
+  const headerBadge = statusBadge(headerStatus);
+
   const allMilestonesPending =
     enrichedMilestones.length > 0 && enrichedMilestones.every((m) => m.status === "PENDING");
 
@@ -1104,22 +1133,8 @@ export default function ProjectDetailPage() {
           </div>
           <div>
             <p className="text-xs font-medium text-zinc-500 mb-1">Status</p>
-            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${
-              isCancelled || isCancelSuccess || isRejectSuccess
-                ? "bg-red-50 border-red-200 text-red-700"
-                : isFunded || isFundSuccess
-                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                : sellerAccepted || isAcceptSuccess
-                ? "bg-blue-50 border-blue-200 text-blue-700"
-                : "bg-zinc-50 border-zinc-200 text-zinc-600"
-            }`}>
-              {isCancelled || isCancelSuccess || isRejectSuccess
-                ? "CANCELLED"
-                : isFunded || isFundSuccess
-                ? "FUNDED"
-                : sellerAccepted || isAcceptSuccess
-                ? "ACCEPTED — AWAITING FUNDING"
-                : "AWAITING ACCEPTANCE"}
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${headerBadge.color}`}>
+              {headerBadge.label}
             </span>
           </div>
         </div>
