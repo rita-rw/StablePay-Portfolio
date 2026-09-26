@@ -384,10 +384,12 @@ export default function CreateProjectPage() {
                 const toSeller = hasAmount ? amountBase - fee : 0n;
                 return (
                   <div key={i} className="rounded-xl border border-zinc-300 bg-white overflow-hidden">
-                    <div className="flex gap-2 p-3">
+                    <div className="p-3">
+                      <p className="mb-2 text-sm font-semibold text-zinc-900">Milestone {i + 1}</p>
+                      <div className="flex gap-2">
                       <input
                         type="text"
-                        placeholder={`Milestone ${i + 1}`}
+                        placeholder="Description"
                         value={m.label}
                         onChange={(e) => updateMilestone(i, "label", e.target.value)}
                         maxLength={100}
@@ -409,6 +411,7 @@ export default function CreateProjectPage() {
                           ✕
                         </button>
                       )}
+                      </div>
                     </div>
                     {hasAmount && (
                       <div className="flex items-center justify-between border-t border-zinc-200 bg-zinc-100 px-4 py-2">

@@ -10,6 +10,7 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { authFetch } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
 
@@ -1228,6 +1229,9 @@ export default function ProjectDetailPage() {
                 <>
                   {events.map((event, i) => {
                     const isLast = i === events.length - 1 && !isProjectComplete;
+                    const milestoneDescription = event.milestoneIndex === null
+                      ? ""
+                      : milestones.find((m) => m.milestoneIndex === event.milestoneIndex)?.label?.trim() ?? "";
                     return (
                       <li key={i} className="flex gap-4 relative">
                         {!isLast && (
@@ -1248,6 +1252,11 @@ export default function ProjectDetailPage() {
                           <p className="text-sm font-semibold text-zinc-900 leading-tight">
                             {getEventLabel(event.type, event.milestoneIndex)}
                           </p>
+                          {milestoneDescription && (
+                            <p className="text-xs text-zinc-600 mt-0.5">
+                              {milestoneDescription}
+                            </p>
+                          )}
                           <p className="text-xs text-zinc-500 mt-0.5">
                             {new Date(event.timestamp).toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" })}
                           </p>
@@ -1291,9 +1300,7 @@ export default function ProjectDetailPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="font-medium text-zinc-900">
-                      {m.label?.trim() || `Milestone ${m.milestoneIndex + 1}`}
-                    </p>
+                    <MilestoneTitle index={m.milestoneIndex} label={m.label} />
                     <p className="mt-1 text-xs text-zinc-500">
                       Amount {formatUSDC(grossBase)} USDC · platform fee {formatUSDC(feeBase)} USDC (2.5%)
                     </p>
@@ -1524,8 +1531,8 @@ export default function ProjectDetailPage() {
               key={m.milestoneIndex}
               className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]"
             >
-              <div className="mb-2 flex items-center justify-between">
-                <p className="font-medium">{m.label?.trim() || `Milestone ${m.milestoneIndex + 1}`}</p>
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <MilestoneTitle index={m.milestoneIndex} label={m.label} />
                 {showProcessingBadge ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 border border-orange-200 px-3 py-1 text-xs font-medium text-orange-600">
                     <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

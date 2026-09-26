@@ -1,6 +1,7 @@
 export interface Milestone {
   escrowAddress?: string;
   milestoneIndex: number;
+  label?: string | null;
   status: string;
   amount?: string;
   deliveryReference?: string | null;

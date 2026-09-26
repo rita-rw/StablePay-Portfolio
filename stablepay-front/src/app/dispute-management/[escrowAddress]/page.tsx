@@ -47,7 +47,7 @@ export default function AdminProjectDisputesPage() {
   const [activeResolveId, setActiveResolveId] = useState<string | null>(null);
   const [escrowMeta, setEscrowMeta] = useState<{ title?: string | null; buyer?: string; seller?: string; buyerCompany?: string | null; sellerCompany?: string | null } | null>(null);
   const [correctionWindowDays, setCorrectionWindowDays] = useState<number | null>(null);
-  const [backendMilestones, setBackendMilestones] = useState<Record<number, { sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }>>({});
+  const [backendMilestones, setBackendMilestones] = useState<Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }>>({});
 
   const lastResolveIdRef = useRef<string | null>(null);
 
@@ -63,9 +63,9 @@ export default function AdminProjectDisputesPage() {
           setEscrowMeta({ title: data.title, buyer: data.buyer, seller: data.seller, buyerCompany: data.buyerCompany, sellerCompany: data.sellerCompany });
           setCorrectionWindowDays(data.correctionWindowDays ?? 7);
           if (Array.isArray(data.milestones)) {
-            const map: Record<number, { sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }> = {};
+            const map: Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }> = {};
             for (const m of data.milestones) {
-              map[m.milestoneIndex] = { sellerAward: m.sellerAward, buyerAward: m.buyerAward, paidAt: m.paidAt, deliveryReference: m.deliveryReference, disputeReason: m.disputeReason, escalationReason: m.escalationReason, isEscalated: m.isEscalated, disputeOpenedAt: m.disputeOpenedAt };
+              map[m.milestoneIndex] = { label: m.label, sellerAward: m.sellerAward, buyerAward: m.buyerAward, paidAt: m.paidAt, deliveryReference: m.deliveryReference, disputeReason: m.disputeReason, escalationReason: m.escalationReason, isEscalated: m.isEscalated, disputeOpenedAt: m.disputeOpenedAt };
             }
             setBackendMilestones(map);
           }
@@ -292,12 +292,19 @@ export default function AdminProjectDisputesPage() {
                 className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]"
               >
                 <div className="mb-4 flex items-center justify-between">
-                  <p className="font-semibold text-zinc-900">
-                    Milestone {dispute.milestoneIndex + 1}
-                    <span className="ml-2 font-normal text-zinc-700">
-                      — {formatUnits(BigInt(dispute.amount), 6)} USDC
-                    </span>
-                  </p>
+                  <div>
+                    <p className="font-semibold text-zinc-900">
+                      Milestone {dispute.milestoneIndex + 1}
+                      <span className="ml-2 font-normal text-zinc-700">
+                        — {formatUnits(BigInt(dispute.amount), 6)} USDC
+                      </span>
+                    </p>
+                    {backendMilestones[dispute.milestoneIndex]?.label?.trim() && (
+                      <p className="mt-0.5 text-sm font-normal text-zinc-500">
+                        {backendMilestones[dispute.milestoneIndex]?.label?.trim()}
+                      </p>
+                    )}
+                  </div>
                   {isResolved ? (
                     <span className="rounded-md bg-zinc-800 border border-zinc-800 px-2.5 py-1 text-xs font-semibold tracking-wide text-white">
                       {(() => {

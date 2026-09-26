@@ -8,6 +8,7 @@ import { fetchProjectDetail } from "@/services/projects";
 import { fetchUser } from "@/services/users";
 import { BASESCAN_URL } from "@/lib/constants";
 import { decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import type { Milestone } from "@/types/escrow";
 
 type ReceiptEscrow = {
@@ -294,7 +295,12 @@ export default function ReceiptPage() {
               <div key={m.milestoneIndex}
                 className="grid grid-cols-[2fr_1fr_1fr_1fr_90px] border-b border-l border-r border-zinc-400 print:break-inside-avoid">
                 <div className="border-r border-zinc-200 px-3 py-3">
-                  <p className="text-sm font-semibold text-zinc-900">Milestone {m.milestoneIndex + 1}</p>
+                  <MilestoneTitle
+                    index={m.milestoneIndex}
+                    label={m.label}
+                    titleClassName="text-sm font-semibold text-zinc-900"
+                    descriptionClassName="mt-0.5 text-xs text-zinc-500"
+                  />
                   {m.deliveryReference && (
                     <p className="mt-0.5 text-xs text-zinc-500 truncate max-w-[180px]">{m.deliveryReference}</p>
                   )}
