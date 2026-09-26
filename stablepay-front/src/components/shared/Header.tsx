@@ -124,9 +124,9 @@ export default function Header() {
   const isLanding = pathname === "/" || pathname === "/faq" || pathname === "/register" || pathname.startsWith("/projects") || pathname.startsWith("/dispute-management") || pathname.startsWith("/admin-settings");
 
   return (
-    <header className={`sticky top-0 z-50 border-b print:hidden ${isLanding ? "bg-white border-zinc-200" : "glass border-border/50"}`}>
-      <div className="grid h-16 w-full grid-cols-[minmax(0,1fr)_minmax(0,56rem)_minmax(0,1fr)] items-center">
-        <Link href="/" className="flex items-center gap-2.5 justify-self-start pl-16">
+    <header className={`relative sticky top-0 z-50 border-b print:hidden ${isLanding ? "bg-white border-zinc-200" : "glass border-border/50"}`}>
+      <div className="grid h-16 w-full grid-cols-[minmax(0,1fr)_56rem_minmax(0,1fr)] items-center">
+        <Link href="/" className="flex min-w-0 items-center gap-2.5 overflow-hidden pl-8 sm:pl-16">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg [print-color-adjust:exact]" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.45), inset 0 1px 0 hsl(210 100% 80% / 0.15)" }}>
             <Shield className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -142,7 +142,7 @@ export default function Header() {
             </nav>
           )}
           {showNav && (
-            <nav className="flex items-center gap-8 text-sm">
+            <nav className="flex items-center gap-4 whitespace-nowrap text-sm xl:gap-8">
               <Link href="/" className="text-zinc-500 hover:text-zinc-900 transition-colors">
                 Dashboard
               </Link>
@@ -163,11 +163,13 @@ export default function Header() {
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-4 pr-8">
+        <div />
+      </div>
+      <div className="absolute right-8 top-1/2 flex -translate-y-1/2 items-center gap-4 whitespace-nowrap">
           {showNav && !isPlatform && user?.companyName && (
             <Link
               href="/account"
-              className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
+              className="whitespace-nowrap text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
             >
               {user.companyName}
             </Link>
@@ -215,7 +217,7 @@ export default function Header() {
                 return (
                   <button
                     onClick={openAccountModal}
-                    className={`h-9 px-4 rounded-lg text-sm font-semibold text-white transition-all hover:brightness-110 ${
+                    className={`h-9 whitespace-nowrap px-4 rounded-lg text-sm font-semibold text-white transition-all hover:brightness-110 ${
                       usdcBalance !== undefined ? "sm:rounded-l-none sm:rounded-r-lg" : ""
                     }`}
                     style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
@@ -227,7 +229,6 @@ export default function Header() {
             </ConnectButton.Custom>
           </div>
         </div>
-      </div>
     </header>
   );
 }
