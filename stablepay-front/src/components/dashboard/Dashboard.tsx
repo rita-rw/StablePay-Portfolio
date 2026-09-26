@@ -9,7 +9,7 @@ import { fetchUserProjects } from "@/services/projects";
 import { deriveProjectStatus, getMilestoneStatus, decodeTitle, calcFeeBase } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
-import { Wallet, Plus, ArrowRight, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Wallet, ArrowDownLeft, Plus, ArrowRight, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
 
 const abi = StablePayEscrowABI.abi as Abi;
 
@@ -191,13 +191,6 @@ export default function Dashboard() {
       });
   }, [chainProjects]);
 
-  const me = address?.toLowerCase();
-  const actsAsBuyer = escrows.some((e) => e.buyer.toLowerCase() === me);
-  const actsAsSeller = escrows.some((e) => e.seller.toLowerCase() === me);
-  const showReceivedLine = actsAsBuyer && actsAsSeller;
-  const moneyLabel = actsAsSeller && !actsAsBuyer ? "Received" : "Paid out";
-  const moneyAmount = actsAsSeller && !actsAsBuyer ? stats.received : stats.paidOut;
-
   if (loading || (escrows.length > 0 && !chainData && !chainError)) {
     return (
       <div className="flex flex-1 items-center justify-center bg-white">
@@ -230,42 +223,51 @@ export default function Dashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-          <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock className="h-4 w-4 text-primary" />
-              <span className="text-xs font-medium text-zinc-500">Active</span>
+        <div className="mb-10 flex flex-col gap-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="h-4 w-4 text-primary" />
+                <span className="text-xs font-medium text-zinc-500">Active</span>
+              </div>
+              <p className="text-2xl font-bold text-zinc-900">{stats.active}</p>
             </div>
-            <p className="text-2xl font-bold text-zinc-900">{stats.active}</p>
+            <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="h-4 w-4 text-purple-500" />
+                <span className="text-xs font-medium text-zinc-500">Closed</span>
+              </div>
+              <p className="text-2xl font-bold text-zinc-900">{stats.completed}</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                <span className="text-xs font-medium text-zinc-500">Disputed</span>
+              </div>
+              <p className="text-2xl font-bold text-zinc-900">{stats.disputed}</p>
+            </div>
           </div>
-          <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
-            <div className="flex items-center gap-2 mb-3">
-              <CheckCircle2 className="h-4 w-4 text-purple-500" />
-              <span className="text-xs font-medium text-zinc-500">Closed</span>
-            </div>
-            <p className="text-2xl font-bold text-zinc-900">{stats.completed}</p>
-          </div>
-          <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-              <span className="text-xs font-medium text-zinc-500">Disputed</span>
-            </div>
-            <p className="text-2xl font-bold text-zinc-900">{stats.disputed}</p>
-          </div>
-          <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
-            <div className="flex items-center gap-2 mb-3">
-              <Wallet className="h-4 w-4 text-primary" />
-              <span className="text-xs font-medium text-zinc-500">{moneyLabel}</span>
-            </div>
-            <p className="text-2xl font-bold leading-tight text-zinc-900 tabular-nums whitespace-nowrap">
-              {formatUnits(moneyAmount, 6)}
-            </p>
-            <p className="mt-1 text-sm font-normal text-zinc-400">USDC</p>
-            {showReceivedLine && (
-              <p className="mt-2 text-xs text-zinc-500">
-                Received {formatUnits(stats.received, 6)} USDC
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center gap-2 mb-3">
+                <Wallet className="h-4 w-4 text-primary" />
+                <span className="text-xs font-medium text-zinc-500">Paid out</span>
+              </div>
+              <p className="text-2xl font-bold leading-tight text-zinc-900 tabular-nums whitespace-nowrap">
+                {formatUnits(stats.paidOut, 6)}
               </p>
-            )}
+              <p className="mt-1 text-sm font-normal text-zinc-400">USDC</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-300 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center gap-2 mb-3">
+                <ArrowDownLeft className="h-4 w-4 text-primary" />
+                <span className="text-xs font-medium text-zinc-500">Received</span>
+              </div>
+              <p className="text-2xl font-bold leading-tight text-zinc-900 tabular-nums whitespace-nowrap">
+                {formatUnits(stats.received, 6)}
+              </p>
+              <p className="mt-1 text-sm font-normal text-zinc-400">USDC</p>
+            </div>
           </div>
         </div>
 
