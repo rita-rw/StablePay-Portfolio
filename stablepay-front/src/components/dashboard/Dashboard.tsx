@@ -252,12 +252,6 @@ export default function Dashboard() {
           >
             <Plus className="h-4 w-4" /> Create Project
           </Link>
-          <Link
-            href="/projects"
-            className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 px-5 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
-          >
-            View All Projects <ArrowRight className="h-4 w-4" />
-          </Link>
         </div>
 
         {/* Tasks waiting on this wallet */}
