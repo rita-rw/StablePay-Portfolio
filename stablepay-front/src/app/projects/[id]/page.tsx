@@ -449,6 +449,9 @@ export default function ProjectDetailPage() {
   // final submitted layout so it doesn't jump again when the listener catches up.
   const [confirmedSubmits, setConfirmedSubmits] = useState<Set<number>>(new Set());
   const [optimisticDisputes, setOptimisticDisputes] = useState<Record<number, string>>({});
+  // Chain receipt arrived, backend status not synced yet. Keeps the card in its
+  // final disputed layout instead of an empty Processing state.
+  const [confirmedDisputes, setConfirmedDisputes] = useState<Set<number>>(new Set());
   const [escalationReasons, setEscalationReasons] = useState<Record<number, string>>({});
   const [escalationExpanded, setEscalationExpanded] = useState<Record<number, boolean>>({});
   const [disputeExpanded, setDisputeExpanded] = useState<Record<number, boolean>>({});
@@ -710,10 +713,18 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     if (!isOpenDisputeSuccess || lastDisputedIndexRef.current === null) return;
-    setProcessingMilestones((prev) => new Map(prev).set(lastDisputedIndexRef.current!, "DISPUTED"));
+    const index = lastDisputedIndexRef.current;
+    setProcessingMilestones((prev) => new Map(prev).set(index, "DISPUTED"));
+    setConfirmedDisputes((prev) => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
 
     if (pendingDisputeRef.current) {
       const { milestoneIndex, reason } = pendingDisputeRef.current;
+      pendingDisputeRef.current = null;
+      setOptimisticDisputes((prev) => ({ ...prev, [milestoneIndex]: reason }));
       const apiUrl = API_URL;
       if (apiUrl && walletClient) {
         authFetch(`${apiUrl}/projects/${escrowAddress}/milestones/${milestoneIndex}/dispute`, walletClient, {
@@ -722,7 +733,6 @@ export default function ProjectDetailPage() {
           body: JSON.stringify({ disputeReason: reason }),
         }).catch(() => {});
       }
-      pendingDisputeRef.current = null;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- walletClient is stable ref, don't re-fire on change
   }, [isOpenDisputeSuccess, escrowAddress]);
@@ -787,6 +797,7 @@ export default function ProjectDetailPage() {
     if (processingMilestones.size === 0) return;
     const updated = new Map(processingMilestones);
     const syncedSubmits: number[] = [];
+    const syncedDisputes: number[] = [];
     let changed = false;
     for (const [idx, expectedStatus] of processingMilestones) {
       const m = enrichedMilestones.find((m) => m.milestoneIndex === idx);
@@ -794,6 +805,7 @@ export default function ProjectDetailPage() {
         updated.delete(idx);
         changed = true;
         if (expectedStatus === "SUBMITTED") syncedSubmits.push(idx);
+        if (expectedStatus === "DISPUTED") syncedDisputes.push(idx);
       }
     }
     if (changed) setProcessingMilestones(updated);
@@ -801,6 +813,13 @@ export default function ProjectDetailPage() {
       setConfirmedSubmits((prev) => {
         const next = new Set(prev);
         for (const idx of syncedSubmits) next.delete(idx);
+        return next;
+      });
+    }
+    if (syncedDisputes.length > 0) {
+      setConfirmedDisputes((prev) => {
+        const next = new Set(prev);
+        for (const idx of syncedDisputes) next.delete(idx);
         return next;
       });
     }
@@ -933,7 +952,6 @@ export default function ProjectDetailPage() {
     if (!reason) return;
     lastDisputedIndexRef.current = milestoneIndex;
     pendingDisputeRef.current = { milestoneIndex, reason };
-    setOptimisticDisputes((prev) => ({ ...prev, [milestoneIndex]: reason }));
     const reasonHash = keccak256(toHex(reason));
     writeOpenDispute({
       address: escrowAddress,
@@ -1391,13 +1409,20 @@ export default function ProjectDetailPage() {
               : m.status;
             const processingAs = processingMilestones.get(m.milestoneIndex);
             const locallySubmitted = confirmedSubmits.has(m.milestoneIndex);
-            const showProcessingBadge = processingAs != null && !(processingAs === "SUBMITTED" && locallySubmitted);
-            const badgeStatus =
-              locallySubmitted && (displayStatus === "PENDING" || displayStatus === "DISPUTED")
-                ? "SUBMITTED"
-                : displayStatus;
+            const locallyDisputed = confirmedDisputes.has(m.milestoneIndex);
+            const showProcessingBadge =
+              processingAs != null &&
+              !(processingAs === "SUBMITTED" && locallySubmitted) &&
+              !(processingAs === "DISPUTED" && locallyDisputed);
+            const badgeStatus = locallySubmitted && (displayStatus === "PENDING" || displayStatus === "DISPUTED")
+              ? "SUBMITTED"
+              : locallyDisputed && displayStatus === "SUBMITTED"
+              ? "DISPUTED"
+              : displayStatus;
             const submittingThis =
               (isSubmitPending || isSubmitConfirming) && lastSubmittedIndexRef.current === m.milestoneIndex;
+            const disputingThis =
+              (isOpenDisputePending || isOpenDisputeConfirming) && lastDisputedIndexRef.current === m.milestoneIndex;
             return (
             <div
               key={m.milestoneIndex}
@@ -1527,17 +1552,22 @@ export default function ProjectDetailPage() {
                 );
 
                 const disputeReason = m.disputeReason ?? optimisticDisputes[m.milestoneIndex];
-                const disputeBox = (displayStatus === "DISPUTED" || isDisputeOutcome) && !processingMilestones.has(m.milestoneIndex) ? (
+                const disputeOpenedBy = m.disputeOpenedBy ?? (locallyDisputed ? address : undefined);
+                const disputeOpenedAt = m.disputeOpenedAt ?? (locallyDisputed ? new Date().toISOString() : undefined);
+                const showDisputeBox =
+                  (displayStatus === "DISPUTED" || isDisputeOutcome || locallyDisputed) &&
+                  (processingAs == null || processingAs === "DISPUTED");
+                const disputeBox = showDisputeBox ? (
                   <div className="mt-3 border-l-2 border-red-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md">
                     <p className="mb-1.5 font-semibold text-red-600 uppercase tracking-wider text-[10px]">Dispute</p>
-                    {m.disputeOpenedBy && (() => {
-                      const isByBuyer = m.disputeOpenedBy!.toLowerCase() === (buyer as string | undefined)?.toLowerCase();
+                    {disputeOpenedBy && (() => {
+                      const isByBuyer = disputeOpenedBy.toLowerCase() === (buyer as string | undefined)?.toLowerCase();
                       const role = isByBuyer ? "Buyer" : "Seller";
                       const company = isByBuyer ? escrowMeta?.buyerCompany : escrowMeta?.sellerCompany;
                       return (
                         <p className="mb-1 text-zinc-700">
                           <span className="font-medium text-zinc-600">Opened by ({role}):</span>{" "}
-                          {company ?? `${m.disputeOpenedBy!.slice(0, 6)}...${m.disputeOpenedBy!.slice(-4)}`}
+                          {company ?? `${disputeOpenedBy.slice(0, 6)}...${disputeOpenedBy.slice(-4)}`}
                         </p>
                       );
                     })()}
@@ -1546,10 +1576,10 @@ export default function ProjectDetailPage() {
                         <span className="font-medium text-zinc-600">Reason:</span> {disputeReason}
                       </p>
                     )}
-                    {m.disputeOpenedAt && (
+                    {disputeOpenedAt && (
                       <p className="text-zinc-700">
                         <span className="font-medium text-zinc-600">Opened:</span>{" "}
-                        {new Date(m.disputeOpenedAt).toLocaleDateString()}
+                        {new Date(disputeOpenedAt).toLocaleDateString()}
                       </p>
                     )}
                     {isDisputeOutcome && m.paidAt && (
@@ -1610,7 +1640,7 @@ export default function ProjectDetailPage() {
                   </>
                 );
               })()}
-              {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && (
+              {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && !locallyDisputed && (
                 <div className="mt-3 space-y-2">
                   {(() => {
                     const isThisMilestone = lastApprovedIndexRef.current === m.milestoneIndex;
@@ -1653,12 +1683,14 @@ export default function ProjectDetailPage() {
                           placeholder="Dispute reason (e.g. work not delivered as agreed)"
                           maxLength={500}
                           rows={3}
-                          className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200 resize-none"
+                          disabled={disputingThis}
+                          className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200 resize-none disabled:opacity-60"
                         />
                         <div className="flex gap-2">
                           <button
                             onClick={() => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: false }))}
-                            className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                            disabled={disputingThis}
+                            className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
                           >
                             Cancel
                           </button>
