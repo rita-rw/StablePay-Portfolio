@@ -202,7 +202,7 @@ function ProjectsList() {
   ];
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="bg-white">
       <div className="mx-auto max-w-4xl px-4 py-12">
         <div className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">{isPlatform ? "All Client Projects" : "My Escrows"}</h1>

@@ -33,6 +33,13 @@ const ACTION_RANK: Record<TodoAction, number> = {
 
 const PLATFORM_FEE_BPS = 250n;
 
+const escrowCache = new Map<string, Escrow[]>();
+let chainCache: { key: string; data: readonly { result?: unknown }[] } | null = null;
+
+function chainKey(list: Escrow[]): string {
+  return list.map((escrow) => `${escrow.id.toLowerCase()}:${escrow.milestoneCount}`).join("|");
+}
+
 /** Seller's net on a released amount. Same 2.5% split as the payment receipt. */
 function sellerNet(base: bigint): bigint {
   return base - calcFeeBase(base, PLATFORM_FEE_BPS);
@@ -42,16 +49,20 @@ export default function Dashboard() {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
   const { user } = useUser();
-  const [escrows, setEscrows] = useState<Escrow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedEscrows = address ? escrowCache.get(address.toLowerCase()) : undefined;
+  const [escrows, setEscrows] = useState<Escrow[]>(cachedEscrows ?? []);
+  const [loading, setLoading] = useState(cachedEscrows === undefined);
 
   useEffect(() => {
     if (!address || !walletClient) return;
     let cancelled = false;
-    setLoading(true);
+    const key = address.toLowerCase();
+    if (!escrowCache.has(key)) setLoading(true);
     fetchUserProjects(address, walletClient)
       .then((data) => {
-        if (!cancelled) setEscrows(data);
+        if (cancelled) return;
+        escrowCache.set(key, data);
+        setEscrows(data);
       })
       .catch(() => {
         if (!cancelled) setEscrows([]);
@@ -85,8 +96,14 @@ export default function Dashboard() {
     query: { enabled: contracts.length > 0 },
   });
 
+  const chainKeyForEscrows = chainKey(escrows);
+  const chainData = onChainData ?? (chainCache?.key === chainKeyForEscrows ? chainCache.data : undefined);
+  if (onChainData && escrows.length > 0) {
+    chainCache = { key: chainKeyForEscrows, data: onChainData };
+  }
+
   const chainProjects = useMemo(() => {
-    if (!onChainData || escrows.length === 0) return [];
+    if (!chainData || escrows.length === 0) return [];
     const me = address?.toLowerCase();
     const enriched: {
       escrow: Escrow;
@@ -99,9 +116,9 @@ export default function Dashboard() {
     }[] = [];
     let idx = 0;
     for (const e of escrows) {
-      const sellerAccepted = onChainData[idx]?.result as boolean ?? false; idx++;
-      const funded = onChainData[idx]?.result as boolean ?? false; idx++;
-      const cancelled = onChainData[idx]?.result as boolean ?? false; idx++;
+      const sellerAccepted = Boolean(chainData[idx]?.result); idx++;
+      const funded = Boolean(chainData[idx]?.result); idx++;
+      const cancelled = Boolean(chainData[idx]?.result); idx++;
       const milestoneStatuses: string[] = [];
       let hasDispute = false;
       let paidOut = BigInt(0);
@@ -109,7 +126,7 @@ export default function Dashboard() {
       const isBuyer = e.buyer.toLowerCase() === me;
       const isSeller = e.seller.toLowerCase() === me;
       for (let i = 0; i < e.milestoneCount; i++) {
-        const r = onChainData[idx]?.result as [bigint, number, string, bigint, string, bigint, string] | undefined;
+        const r = chainData[idx]?.result as [bigint, number, string, bigint, string, bigint, string] | undefined;
         if (r) {
           const s = getMilestoneStatus(Number(r[1]));
           milestoneStatuses.push(s);
@@ -150,7 +167,7 @@ export default function Dashboard() {
       });
     }
     return enriched;
-  }, [onChainData, escrows, address]);
+  }, [chainData, escrows, address]);
 
   const stats = useMemo(() => {
     const result = { active: 0, completed: 0, disputed: 0, paidOut: BigInt(0), received: BigInt(0) };
@@ -181,16 +198,16 @@ export default function Dashboard() {
   const moneyLabel = actsAsSeller && !actsAsBuyer ? "Received" : "Paid out";
   const moneyAmount = actsAsSeller && !actsAsBuyer ? stats.received : stats.paidOut;
 
-  if (loading || (escrows.length > 0 && !onChainData && !chainError)) {
+  if (loading || (escrows.length > 0 && !chainData && !chainError)) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="flex flex-1 items-center justify-center bg-white">
         <p className="text-zinc-500">Loading dashboard...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="bg-white">
       <div className="mx-auto max-w-4xl px-4 py-12">
         {/* Welcome */}
         <div className="mb-10">

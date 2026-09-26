@@ -24,9 +24,11 @@ export default function RootLayout({
       </head>
       <body className="antialiased bg-white">
         <Providers>
-          <Header />
-          {children}
-          <Footer />
+          <div className="flex min-h-screen flex-col">
+            <Header />
+            <main className="flex flex-1 flex-col pb-16">{children}</main>
+            <Footer />
+          </div>
         </Providers>
       </body>
     </html>

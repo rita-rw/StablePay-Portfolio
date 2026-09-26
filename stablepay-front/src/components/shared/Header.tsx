@@ -144,6 +144,9 @@ export default function Header() {
           )}
           {showNav && (
             <nav className="flex items-center gap-8 text-sm">
+              <Link href="/" className="text-zinc-500 hover:text-zinc-900 transition-colors">
+                Dashboard
+              </Link>
               <Link href="/projects" className="text-zinc-500 hover:text-zinc-900 transition-colors">
                 {isPlatform ? "All Projects" : "My Projects"}
               </Link>

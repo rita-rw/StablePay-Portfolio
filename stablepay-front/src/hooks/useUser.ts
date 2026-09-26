@@ -7,11 +7,15 @@ import type { User } from "@/types/user";
 
 export type { User };
 
+const userCache = new Map<string, User | null>();
+
 export function useUser() {
   const { address, isConnected, status } = useAccount();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [checked, setChecked] = useState(false);
+  const cached = address ? userCache.get(address.toLowerCase()) : undefined;
+  const hasCachedUser = address ? userCache.has(address.toLowerCase()) : false;
+  const [user, setUser] = useState<User | null>(hasCachedUser ? cached ?? null : null);
+  const [loading, setLoading] = useState(!hasCachedUser);
+  const [checked, setChecked] = useState(hasCachedUser);
 
   useEffect(() => {
     if (status === "connecting" || status === "reconnecting") return;
@@ -24,14 +28,22 @@ export function useUser() {
     }
 
     let cancelled = false;
+    const key = address.toLowerCase();
     const load = () => {
-      setLoading(true);
+      if (!userCache.has(key)) {
+        setLoading(true);
+        setChecked(false);
+      }
       fetchUser(address)
         .then((data) => {
-          if (!cancelled) setUser(data);
+          if (cancelled) return;
+          userCache.set(key, data);
+          setUser(data);
         })
         .catch(() => {
-          if (!cancelled) setUser(null);
+          if (cancelled) return;
+          userCache.set(key, null);
+          setUser(null);
         })
         .finally(() => {
           if (!cancelled) {
@@ -41,7 +53,6 @@ export function useUser() {
         });
     };
 
-    setChecked(false);
     load();
     window.addEventListener("stablepay:userUpdated", load);
     return () => {
