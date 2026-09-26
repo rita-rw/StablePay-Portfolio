@@ -1,8 +1,8 @@
 "use client";
 
 import { useAccount, useWalletClient, useReadContracts } from "wagmi";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { formatUnits } from "viem";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
@@ -14,8 +14,24 @@ import type { Escrow } from "@/types/escrow";
 type Tab = "active" | "completed" | "all";
 const ITEMS_PER_PAGE = 6;
 
+function tabFromSearch(value: string | null): Tab {
+  if (value === "closed" || value === "completed") return "completed";
+  if (value === "all") return "all";
+  return "active";
+}
+
 export default function ProjectsPage() {
+  return (
+    <Suspense>
+      <ProjectsList />
+    </Suspense>
+  );
+}
+
+function ProjectsList() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = tabFromSearch(searchParams.get("tab"));
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());
@@ -23,21 +39,27 @@ export default function ProjectsPage() {
   const [escrows, setEscrows] = useState<Escrow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("active");
   const [page, setPage] = useState(1);
+
+  function selectTab(tab: Tab) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "active") params.delete("tab");
+    else params.set("tab", tab === "completed" ? "closed" : "all");
+    const query = params.toString();
+    router.replace(query ? `/projects?${query}` : "/projects", { scroll: false });
+  }
   useEffect(() => setMounted(true), []);
 
   const fetchProjects = useCallback(async () => {
-    if (!isConnected || !address) return;
-    if (isPlatform && !walletClient) return;
+    if (!isConnected || !address || !walletClient) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const data = isPlatform && walletClient
+      const data = isPlatform
         ? await fetchAdminProjects(walletClient)
-        : await fetchUserProjects(address, walletClient ?? undefined);
+        : await fetchUserProjects(address, walletClient);
       setEscrows(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch projects");
@@ -107,7 +129,7 @@ export default function ProjectsPage() {
   const enrichedEscrows = useMemo(() => {
     return escrows.map((escrow) => {
       const onChain = onChainMap.get(escrow.id.toLowerCase());
-      const displayStatus = getDisplayStatus(escrow.status, onChain);
+      const displayStatus = getDisplayStatus(escrow.status, onChain, escrow.milestones, escrow.milestoneCount);
       return { escrow, displayStatus, onChain };
     });
   }, [escrows, onChainMap]);
@@ -202,7 +224,7 @@ export default function ProjectsPage() {
           {tabs.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => selectTab(tab.key)}
               className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === tab.key
                   ? "bg-white text-zinc-900 shadow-sm border border-zinc-200"
@@ -214,14 +236,16 @@ export default function ProjectsPage() {
           ))}
         </div>
 
-        {loading && <p className="text-zinc-500">Loading projects...</p>}
+        {(loading || !walletClient) && escrows.length === 0 && (
+          <p className="text-zinc-500">Loading projects...</p>
+        )}
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
             <p className="text-sm text-red-600">Error: {error}</p>
           </div>
         )}
 
-        {!loading && !error && filtered.length === 0 && (
+        {!loading && walletClient && !error && filtered.length === 0 && (
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-10 text-center">
             <p className="text-zinc-500">
               {escrows.length === 0 ? "No projects found for this address." : "No projects in this category."}

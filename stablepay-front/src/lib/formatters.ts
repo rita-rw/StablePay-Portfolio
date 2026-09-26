@@ -96,6 +96,10 @@ export function deriveProjectStatus(
   return "CREATED";
 }
 
+function settledMilestone(status: string): boolean {
+  return status === "PAID" || status === "RESOLVED" || status === "REFUNDED";
+}
+
 export function getDisplayStatus(
   dbStatus: string,
   onChain?: {
@@ -106,6 +110,8 @@ export function getDisplayStatus(
     allPaid: boolean;
     hasSubmitted: boolean;
   },
+  milestones?: { status: string }[],
+  milestoneCount?: number,
 ): string {
   if (onChain) {
     if (onChain.cancelled) return "CANCELLED";
@@ -114,6 +120,17 @@ export function getDisplayStatus(
     if (onChain.funded) return "FUNDED";
     if (onChain.sellerAccepted) return "SELLER_ACCEPTED";
     return "CREATED";
+  }
+  // Escrow.status stays FUNDED after the work is done. Use milestone rows so
+  // the list does not flash those projects on Active before the chain read.
+  if (dbStatus === "CANCELLED" || dbStatus === "SELLER_REJECTED") return dbStatus;
+  const rows = milestones ?? [];
+  const complete = milestoneCount == null || milestoneCount === 0 || rows.length >= milestoneCount;
+  if (complete && rows.length > 0) {
+    if (rows.every((m) => settledMilestone(m.status))) return "COMPLETED";
+    if (rows.some((m) => m.status === "SUBMITTED" || m.status === "DISPUTED" || m.status === "RESOLVED" || m.status === "PAID")) {
+      return "IN_PROGRESS";
+    }
   }
   return dbStatus;
 }
