@@ -1290,14 +1290,19 @@ export default function ProjectDetailPage() {
                 className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <p className="font-medium text-zinc-900">
-                    {m.label?.trim() || `Milestone ${m.milestoneIndex + 1}`}
-                  </p>
-                  <p className="shrink-0 font-semibold text-zinc-900">{formatUSDC(grossBase)} USDC</p>
+                  <div>
+                    <p className="font-medium text-zinc-900">
+                      {m.label?.trim() || `Milestone ${m.milestoneIndex + 1}`}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Amount {formatUSDC(grossBase)} USDC · platform fee {formatUSDC(feeBase)} USDC (2.5%)
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs font-medium text-zinc-500">Seller receives</p>
+                    <p className="font-semibold text-emerald-700">{formatUSDC(sellerReceives)} USDC</p>
+                  </div>
                 </div>
-                <p className="mt-2 text-xs text-zinc-500">
-                  Platform fee {formatUSDC(feeBase)} USDC (2.5%). Seller receives {formatUSDC(sellerReceives)} USDC.
-                </p>
               </div>
             );
           })}
