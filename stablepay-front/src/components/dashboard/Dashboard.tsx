@@ -212,10 +212,19 @@ export default function Dashboard() {
         {/* Welcome */}
         <div className="mb-10">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-2">Dashboard</p>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 mb-1">
-            Welcome back, {user?.companyName ?? "User"}
-          </h1>
-          <p className="text-zinc-500 text-sm">
+          <div className="flex items-center justify-between gap-4">
+            <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
+              Welcome back, {user?.companyName ?? "User"}
+            </h1>
+            <Link
+              href="/projects/new"
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all hover:brightness-110"
+              style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
+            >
+              <Plus className="h-4 w-4" /> Create Project
+            </Link>
+          </div>
+          <p className="text-zinc-500 text-sm mt-1">
             Here&apos;s an overview of your escrow activity on StablePay.
           </p>
         </div>
@@ -258,17 +267,6 @@ export default function Dashboard() {
               </p>
             )}
           </div>
-        </div>
-
-        {/* Quick actions */}
-        <div className="flex gap-3 mb-10">
-          <Link
-            href="/projects/new"
-            className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all hover:brightness-110"
-            style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
-          >
-            <Plus className="h-4 w-4" /> Create Project
-          </Link>
         </div>
 
         {/* Tasks waiting on this wallet */}

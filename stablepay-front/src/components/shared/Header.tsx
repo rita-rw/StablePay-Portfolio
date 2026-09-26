@@ -125,16 +125,15 @@ export default function Header() {
 
   return (
     <header className={`sticky top-0 z-50 border-b print:hidden ${isLanding ? "bg-white border-zinc-200" : "glass border-border/50"}`}>
-      <div className="w-full px-8 flex h-16 items-center justify-between">
-        {/* Left: logo + nav */}
-        <div className="flex items-center gap-16">
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg [print-color-adjust:exact]" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.45), inset 0 1px 0 hsl(210 100% 80% / 0.15)" }}>
-              <Shield className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className={`text-xl font-bold ${isLanding ? "text-zinc-900" : "gradient-text"}`}>StablePay</span>
-          </Link>
+      <div className="grid h-16 w-full grid-cols-[minmax(0,1fr)_minmax(0,56rem)_minmax(0,1fr)] items-center">
+        <Link href="/" className="flex items-center gap-2.5 justify-self-start pl-16">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg [print-color-adjust:exact]" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.45), inset 0 1px 0 hsl(210 100% 80% / 0.15)" }}>
+            <Shield className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <span className={`text-xl font-bold ${isLanding ? "text-zinc-900" : "gradient-text"}`}>StablePay</span>
+        </Link>
 
+        <div className="flex h-full items-center px-4">
           {isLanding && !showNav && !sessionPending && (
             <nav className="hidden md:flex items-center gap-8 text-sm">
               <Link href="/#how-it-works" className="text-zinc-500 hover:text-zinc-900 transition-colors">How it works</Link>
@@ -164,8 +163,7 @@ export default function Header() {
           )}
         </div>
 
-        {/* Right: company name + connect */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-end gap-4 pr-8">
           {showNav && !isPlatform && user?.companyName && (
             <Link
               href="/account"
