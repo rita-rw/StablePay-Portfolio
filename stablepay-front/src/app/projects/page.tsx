@@ -112,12 +112,15 @@ export default function ProjectsPage() {
     });
   }, [escrows, onChainMap]);
 
-  /** Latest milestone payment/settlement time, else createdAt — used to surface recently finished projects. */
+  /** Latest payment, or the cancel/reject time. createdAt only when neither exists. */
   function completionSortTime(escrow: Escrow): number {
     const paidTimes = (escrow.milestones ?? [])
       .map((m) => (m.paidAt ? new Date(m.paidAt).getTime() : 0))
       .filter((t) => t > 0);
-    if (paidTimes.length > 0) return Math.max(...paidTimes);
+    const paid = paidTimes.length > 0 ? Math.max(...paidTimes) : 0;
+    const cancelled = escrow.cancelledAt ? new Date(escrow.cancelledAt).getTime() : 0;
+    const best = Math.max(paid, cancelled);
+    if (best > 0) return best;
     return new Date(escrow.createdAt).getTime();
   }
 

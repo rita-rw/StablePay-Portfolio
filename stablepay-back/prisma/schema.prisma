@@ -46,6 +46,7 @@ model Escrow {
   fundedTxHash   String?       @db.VarChar(66)
   fundedAt               DateTime?
   sellerAcceptedAt       DateTime?
+  cancelledAt            DateTime?
   createdAt              DateTime      @default(now())
   correctionWindowDays   Int?
   autoApprovalDays       Int?

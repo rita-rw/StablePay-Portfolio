@@ -375,6 +375,14 @@ export async function getEvents(req: AuthRequest, res: Response): Promise<void> 
       events.push({ type: "project_funded", timestamp: escrow.createdAt, milestoneIndex: null });
     }
 
+    if (escrow.cancelledAt && (escrow.status === "CANCELLED" || escrow.status === "SELLER_REJECTED")) {
+      events.push({
+        type: escrow.status === "SELLER_REJECTED" ? "project_rejected" : "project_cancelled",
+        timestamp: escrow.cancelledAt,
+        milestoneIndex: null,
+      });
+    }
+
     for (const milestone of escrow.milestones) {
       if (milestone.submittedAt) {
         events.push({ type: "milestone_submitted", timestamp: milestone.submittedAt, milestoneIndex: milestone.milestoneIndex });

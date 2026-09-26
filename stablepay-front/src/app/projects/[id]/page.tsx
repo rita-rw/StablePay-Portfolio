@@ -48,6 +48,8 @@ function getEventLabel(type: string, milestoneIndex: number | null): string {
     project_created: "Project Created",
     seller_accepted: "Seller Accepted",
     project_funded: "Project Funded",
+    project_cancelled: "Project Cancelled",
+    project_rejected: "Project Rejected",
     milestone_submitted: `Milestone ${n} Submitted`,
     dispute_opened: `Dispute Opened by Buyer on Milestone ${n}`,
     dispute_escalated: `Escalated to Admin on Milestone ${n}`,
@@ -465,6 +467,15 @@ export default function ProjectDetailPage() {
   const lastDisputedIndexRef = useRef<number | null>(null);
   const lastResubmitIndexRef = useRef<number | null>(null);
   const lastTimeoutIndexRef = useRef<number | null>(null);
+  // Which card is in a wallet flow. State, not the refs above: those are only
+  // read in effects, and reading them while rendering is a hooks error.
+  const [approveIndex, setApproveIndex] = useState<number | null>(null);
+  const [claimIndex, setClaimIndex] = useState<number | null>(null);
+  const [submitIndex, setSubmitIndex] = useState<number | null>(null);
+  const [disputeIndex, setDisputeIndex] = useState<number | null>(null);
+  const [resubmitIndex, setResubmitIndex] = useState<number | null>(null);
+  const [timeoutIndex, setTimeoutIndex] = useState<number | null>(null);
+  const [escalateIndex, setEscalateIndex] = useState<number | null>(null);
   const pendingDeliveryRef = useRef<{ milestoneIndex: number; reference: string } | null>(null);
   const pendingResubmitRef = useRef<{ milestoneIndex: number; reference: string } | null>(null);
   const pendingDisputeRef = useRef<{ milestoneIndex: number; reason: string } | null>(null);
@@ -634,6 +645,7 @@ export default function ProjectDetailPage() {
 
   function handleEscalate(milestoneIndex: number) {
     lastEscalateIndexRef.current = milestoneIndex;
+    setEscalateIndex(milestoneIndex);
     const reason = keccak256(toHex("Seller escalation"));
     writeEscalate({
       address: escrowAddress,
@@ -896,6 +908,7 @@ export default function ProjectDetailPage() {
   }
 
   function handleClaimAutoApproval(milestoneIndex: number) {
+    setClaimIndex(milestoneIndex);
     lastClaimIndexRef.current = milestoneIndex;
     writeClaimAutoApproval({
       address: escrowAddress,
@@ -922,6 +935,7 @@ export default function ProjectDetailPage() {
 
   function handleApproveMilestone(milestoneIndex: number) {
     lastApprovedIndexRef.current = milestoneIndex;
+    setApproveIndex(milestoneIndex);
     writeApproveMilestone({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
@@ -932,6 +946,7 @@ export default function ProjectDetailPage() {
 
   function handleSubmitDelivery(milestoneIndex: number) {
     lastSubmittedIndexRef.current = milestoneIndex;
+    setSubmitIndex(milestoneIndex);
     const ref = deliveryInputs[milestoneIndex]?.trim();
     if (!ref) return;
 
@@ -951,6 +966,7 @@ export default function ProjectDetailPage() {
     const reason = disputeInputs[milestoneIndex]?.trim();
     if (!reason) return;
     lastDisputedIndexRef.current = milestoneIndex;
+    setDisputeIndex(milestoneIndex);
     pendingDisputeRef.current = { milestoneIndex, reason };
     const reasonHash = keccak256(toHex(reason));
     writeOpenDispute({
@@ -965,6 +981,7 @@ export default function ProjectDetailPage() {
     const ref = resubmitInputs[milestoneIndex]?.trim();
     if (!ref) return;
     lastResubmitIndexRef.current = milestoneIndex;
+    setResubmitIndex(milestoneIndex);
     // Freeze the reference at sign time — backend save must use this exact value
     pendingResubmitRef.current = { milestoneIndex, reference: ref };
     setDeliverySaveError((prev) => { const next = { ...prev }; delete next[milestoneIndex]; return next; });
@@ -979,6 +996,7 @@ export default function ProjectDetailPage() {
 
   function handleClaimDisputeTimeout(milestoneIndex: number) {
     lastTimeoutIndexRef.current = milestoneIndex;
+    setTimeoutIndex(milestoneIndex);
     writeClaimDisputeTimeout({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
@@ -1176,12 +1194,12 @@ export default function ProjectDetailPage() {
                         )}
                         <div className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center z-10 ${
                           event.type === "created" ? "border-zinc-300 bg-white"
-                          : event.type === "cancelled" || event.type === "disputed" ? "border-red-300 bg-red-50"
+                          : event.type === "cancelled" || event.type === "project_cancelled" || event.type === "project_rejected" || event.type === "disputed" ? "border-red-300 bg-red-50"
                           : "border-primary bg-primary/10"
                         }`}>
                           <div className={`h-2 w-2 rounded-full ${
                             event.type === "created" ? "bg-zinc-300"
-                            : event.type === "cancelled" || event.type === "disputed" ? "bg-red-400"
+                            : event.type === "cancelled" || event.type === "project_cancelled" || event.type === "project_rejected" || event.type === "disputed" ? "bg-red-400"
                             : "bg-primary"
                           }`} />
                         </div>
@@ -1420,9 +1438,9 @@ export default function ProjectDetailPage() {
               ? "DISPUTED"
               : displayStatus;
             const submittingThis =
-              (isSubmitPending || isSubmitConfirming) && lastSubmittedIndexRef.current === m.milestoneIndex;
+              (isSubmitPending || isSubmitConfirming) && submitIndex === m.milestoneIndex;
             const disputingThis =
-              (isOpenDisputePending || isOpenDisputeConfirming) && lastDisputedIndexRef.current === m.milestoneIndex;
+              (isOpenDisputePending || isOpenDisputeConfirming) && disputeIndex === m.milestoneIndex;
             return (
             <div
               key={m.milestoneIndex}
@@ -1643,7 +1661,7 @@ export default function ProjectDetailPage() {
               {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && !locallyDisputed && (
                 <div className="mt-3 space-y-2">
                   {(() => {
-                    const isThisMilestone = lastApprovedIndexRef.current === m.milestoneIndex;
+                    const isThisMilestone = approveIndex === m.milestoneIndex;
                     const isBusy = isApproveMilestonePending || isApproveMilestoneConfirming;
                     // Hide button on other milestones while one is being approved
                     if (isBusy && !isThisMilestone) return null;
@@ -1699,9 +1717,9 @@ export default function ProjectDetailPage() {
                             disabled={!disputeInputs[m.milestoneIndex]?.trim() || isOpenDisputePending || isOpenDisputeConfirming}
                             className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
                           >
-                            {isOpenDisputePending && lastDisputedIndexRef.current === m.milestoneIndex
+                            {isOpenDisputePending && disputeIndex === m.milestoneIndex
                               ? "Confirm in Wallet..."
-                              : isOpenDisputeConfirming && lastDisputedIndexRef.current === m.milestoneIndex
+                              : isOpenDisputeConfirming && disputeIndex === m.milestoneIndex
                               ? "Waiting..."
                               : "Confirm Dispute"}
                           </button>
@@ -1730,9 +1748,9 @@ export default function ProjectDetailPage() {
                       disabled={isClaimPending || isClaimConfirming}
                       className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
                     >
-                      {isClaimPending && lastClaimIndexRef.current === m.milestoneIndex
+                      {isClaimPending && claimIndex === m.milestoneIndex
                         ? "Confirm in Wallet..."
-                        : isClaimConfirming && lastClaimIndexRef.current === m.milestoneIndex
+                        : isClaimConfirming && claimIndex === m.milestoneIndex
                         ? "Waiting for Confirmation..."
                         : "Claim Payment (Auto-approved)"}
                     </button>
@@ -1761,9 +1779,9 @@ export default function ProjectDetailPage() {
                     className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
                     style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
                   >
-                    {isSubmitPending && lastSubmittedIndexRef.current === m.milestoneIndex
+                    {isSubmitPending && submitIndex === m.milestoneIndex
                       ? "Confirm in Wallet..."
-                      : isSubmitConfirming && lastSubmittedIndexRef.current === m.milestoneIndex
+                      : isSubmitConfirming && submitIndex === m.milestoneIndex
                       ? "Waiting for Confirmation..."
                       : "Submit Delivery"}
                   </button>
@@ -1795,9 +1813,9 @@ export default function ProjectDetailPage() {
                     disabled={!resubmitInputs[m.milestoneIndex]?.trim() || isResubmitPending || isResubmitConfirming}
                     className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
                   >
-                    {isResubmitPending && lastResubmitIndexRef.current === m.milestoneIndex
+                    {isResubmitPending && resubmitIndex === m.milestoneIndex
                       ? "Confirm in Wallet..."
-                      : isResubmitConfirming && lastResubmitIndexRef.current === m.milestoneIndex
+                      : isResubmitConfirming && resubmitIndex === m.milestoneIndex
                       ? "Waiting for Confirmation..."
                       : "Resubmit Delivery"}
                   </button>
@@ -1842,9 +1860,9 @@ export default function ProjectDetailPage() {
                           disabled={isEscalatePending || isEscalateConfirming}
                           className="flex-1 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
                         >
-                          {isEscalatePending && lastEscalateIndexRef.current === m.milestoneIndex
+                          {isEscalatePending && escalateIndex === m.milestoneIndex
                             ? "Confirm in Wallet..."
-                            : isEscalateConfirming && lastEscalateIndexRef.current === m.milestoneIndex
+                            : isEscalateConfirming && escalateIndex === m.milestoneIndex
                             ? "Waiting..."
                             : "Confirm Escalation"}
                         </button>
@@ -1877,9 +1895,9 @@ export default function ProjectDetailPage() {
                     disabled={isDisputeTimeoutPending || isDisputeTimeoutConfirming}
                     className="w-full rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
                   >
-                    {isDisputeTimeoutPending && lastTimeoutIndexRef.current === m.milestoneIndex
+                    {isDisputeTimeoutPending && timeoutIndex === m.milestoneIndex
                       ? "Confirm in Wallet..."
-                      : isDisputeTimeoutConfirming && lastTimeoutIndexRef.current === m.milestoneIndex
+                      : isDisputeTimeoutConfirming && timeoutIndex === m.milestoneIndex
                       ? "Waiting for Confirmation..."
                       : `Claim Timeout Refund (${dayLabel(disputeTimeoutDays)} elapsed)`}
                   </button>

@@ -193,6 +193,79 @@ export function getListenerStatus(): ListenerStatusSnapshot {
   };
 }
 
+/** Block time of a close event. Null if it is not in the recent window or the RPC refuses the read. */
+async function readCancelledAt(
+  logClient: typeof backfillClient,
+  address: `0x${string}`,
+  events: Array<typeof escrowCancelledEvent | typeof projectRejectedEvent> = [escrowCancelledEvent, projectRejectedEvent],
+): Promise<Date | null> {
+  // Public Base Sepolia RPC rejects eth_getLogs ranges above 1,000 blocks.
+  // ~30k blocks is about 16 hours, enough for a cancel made during this session.
+  const CHUNK = 999n;
+  const MAX_LOOKBACK_BLOCKS = 30_000n;
+  let latest: bigint;
+  try {
+    latest = await logClient.getBlockNumber();
+  } catch {
+    return null;
+  }
+  const floor = latest > MAX_LOOKBACK_BLOCKS ? latest - MAX_LOOKBACK_BLOCKS : 0n;
+  let end = latest;
+
+  while (end >= floor) {
+    const start = end - CHUNK > floor ? end - CHUNK : floor;
+    for (const event of events) {
+      try {
+        const logs = await logClient.getLogs({ address, event, fromBlock: start, toBlock: end });
+        const blockNumber = logs[0]?.blockNumber;
+        if (blockNumber != null) return await blockDate(logClient, blockNumber);
+      } catch {
+        // Keep searching older windows.
+      }
+    }
+    if (start <= floor) break;
+    end = start - 1n;
+  }
+  return null;
+}
+
+/**
+ * Cancel and seller-reject used to store only the status, so the Closed list
+ * fell back to createdAt. Fill cancelledAt from the chain for those rows.
+ */
+async function repairMissingCancelledAt(startToken: number) {
+  const escrows = await prisma.escrow.findMany({
+    where: {
+      cancelledAt: null,
+      status: { in: ["CANCELLED", "SELLER_REJECTED"] },
+    },
+    select: { id: true, status: true },
+  });
+  if (escrows.length === 0) return;
+
+  console.log(`[cancel-repair] reading close time for ${escrows.length} escrows...`);
+  for (let i = 0; i < escrows.length; i += CATCH_UP_CONCURRENCY) {
+    if (shouldAbortStartup(startToken)) return;
+    const batch = escrows.slice(i, i + CATCH_UP_CONCURRENCY);
+    await Promise.all(
+      batch.map((escrow) =>
+        withRateLimitRetry(async () => {
+          const events = escrow.status === "SELLER_REJECTED"
+            ? [projectRejectedEvent]
+            : [escrowCancelledEvent];
+          const cancelledAt = await readCancelledAt(backfillClient, escrow.id as `0x${string}`, events);
+          if (!cancelledAt) return;
+          await prisma.escrow.update({ where: { id: escrow.id }, data: { cancelledAt } });
+          console.log(`[cancel-repair] ${escrow.id}: ${cancelledAt.toISOString()}`);
+        }, `cancel-repair ${escrow.id}`).catch((err) =>
+          console.error(`[cancel-repair] failed for ${escrow.id}`, err),
+        ),
+      ),
+    );
+    if (i + CATCH_UP_CONCURRENCY < escrows.length) await sleep(CATCH_UP_BATCH_DELAY_MS);
+  }
+}
+
 /** Convert a log's block timestamp to a JS Date (falls back to now if fetch fails). */
 async function blockDate(blockClient: typeof client, blockNumber: bigint | null | undefined): Promise<Date> {
   if (!blockNumber) return new Date();
@@ -786,9 +859,10 @@ export async function startListener() {
         console.log("[EscrowCancelled]", { escrow: escrowAddress });
 
         try {
+          const cancelledAt = await blockDate(client, log.blockNumber);
           await prisma.escrow.update({
             where: { id: escrowAddress },
-            data: { status: "CANCELLED" },
+            data: { status: "CANCELLED", cancelledAt },
           });
         } catch (err) {
           console.error("[listener] EscrowCancelled DB update failed", err);
@@ -985,9 +1059,10 @@ export async function startListener() {
 
           console.log("[ProjectRejected]", { escrow: escrowAddress, seller });
 
+          const cancelledAt = await blockDate(client, log.blockNumber);
           await prisma.escrow.update({
             where: { id: escrowAddress },
-            data: { status: "SELLER_REJECTED" },
+            data: { status: "SELLER_REJECTED", cancelledAt },
           });
         } catch (err) {
           console.error("[listener] ProjectRejected DB update failed", err);
@@ -1046,6 +1121,9 @@ export async function startListener() {
       if (shouldAbortStartup(startToken)) return;
 
       await catchUpOnChainState(startToken);
+      if (shouldAbortStartup(startToken)) return;
+
+      await repairMissingCancelledAt(startToken);
       if (shouldAbortStartup(startToken)) return;
 
       await sweepEscrowCreatedGap(factoryAddress, startupBlock, startToken);
@@ -1236,6 +1314,11 @@ export async function syncSingleEscrow(escrowId: string) {
     }
     if (disputeTimeoutDays != null && escrow.disputeTimeoutDays !== Number(disputeTimeoutDays)) {
       updateData.disputeTimeoutDays = Number(disputeTimeoutDays);
+    }
+
+    if ((cancelled as boolean) && !escrow.cancelledAt) {
+      const cancelledAt = await readCancelledAt(syncClient, address);
+      if (cancelledAt) updateData.cancelledAt = cancelledAt;
     }
 
     // Repair fundedAt if missing

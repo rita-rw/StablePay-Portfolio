@@ -53,6 +53,7 @@ export const escrowDetailFields = {
   fundedTxHash: true,
   fundedAt: true,
   sellerAcceptedAt: true,
+  cancelledAt: true,
   createdAt: true,
   correctionWindowDays: true,
   autoApprovalDays: true,

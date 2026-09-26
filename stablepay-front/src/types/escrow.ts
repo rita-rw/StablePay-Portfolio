@@ -26,6 +26,7 @@ export interface Escrow {
   description?: string | null;
   status: string;
   createdAt: string;
+  cancelledAt?: string | null;
   milestones?: Milestone[];
   buyerCompany?: string | null;
   sellerCompany?: string | null;
