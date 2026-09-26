@@ -36,6 +36,20 @@ export default function CreateProjectPage() {
     { label: "", amount: "" },
   ]);
 
+  useEffect(() => {
+    setMilestones((current) => {
+      let changed = false;
+      const next = current.map((m) => {
+        if (m.amount !== "" && !/^\d*\.?\d{0,6}$/.test(m.amount)) {
+          changed = true;
+          return { ...m, amount: "" };
+        }
+        return m;
+      });
+      return changed ? next : current;
+    });
+  }, [milestones]);
+
   const {
     writeContract,
     data: txHash,
@@ -143,6 +157,14 @@ export default function CreateProjectPage() {
     field: keyof MilestoneInput,
     value: string
   ) {
+    if (field === "amount") {
+      // USDC only: digits and one decimal point. A minus, plus, or exponent never lands in state.
+      // A new array still forces a render so the field snaps back instead of keeping the bad keystroke.
+      if (value !== "" && !/^\d*\.?\d{0,6}$/.test(value)) {
+        setMilestones((current) => [...current]);
+        return;
+      }
+    }
     const updated = [...milestones];
     updated[index] = { ...updated[index], [field]: value };
     setMilestones(updated);
@@ -372,7 +394,8 @@ export default function CreateProjectPage() {
                         className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                       />
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         placeholder="USDC"
                         value={m.amount}
                         onChange={(e) => updateMilestone(i, "amount", e.target.value)}
