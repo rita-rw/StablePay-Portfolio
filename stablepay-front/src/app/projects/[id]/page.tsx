@@ -1200,6 +1200,68 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      {isSeller && !sellerAccepted && !isAcceptSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && userChecked && !isRegistered && (
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+          <h2 className="mb-2 text-lg font-semibold">Registration Required</h2>
+          <p className="mb-4 text-sm text-zinc-800">
+            You have been invited to this project. To accept or reject, you must first register your company on StablePay.
+          </p>
+          <a
+            href={`/register?redirect=/projects/${id}`}
+            className="inline-block rounded-lg bg-primary px-5 py-2 text-sm text-white transition-colors hover:brightness-110"
+          >
+            Register Company
+          </a>
+        </div>
+      )}
+
+      {isSeller && !sellerAccepted && !isAcceptSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && userChecked && isRegistered && (
+        <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
+          <h2 className="mb-2 text-lg font-semibold">Project Invitation</h2>
+          <p className="mb-4 text-sm text-zinc-800">
+            You have been invited to this project. Accept to allow the buyer to fund the escrow, or reject to cancel.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleAcceptProject}
+              disabled={isAcceptPending || isAcceptConfirming}
+              className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 disabled:opacity-50"
+            >
+              {isAcceptPending
+                ? "Confirm in Wallet..."
+                : isAcceptConfirming
+                ? "Waiting for Confirmation..."
+                : "Accept Project"}
+            </button>
+            <button
+              onClick={handleRejectProject}
+              disabled={isRejectPending || isRejectConfirming}
+              className="flex-1 rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+            >
+              {isRejectPending
+                ? "Confirm in Wallet..."
+                : isRejectConfirming
+                ? "Waiting for Confirmation..."
+                : "Reject Project"}
+            </button>
+          </div>
+          {acceptError && (
+            <p className="mt-2 text-xs text-red-500">{parseContractError(acceptError)}</p>
+          )}
+          {rejectError && (
+            <p className="mt-2 text-xs text-red-500">{parseContractError(rejectError)}</p>
+          )}
+        </div>
+      )}
+
+      {isBuyer && !sellerAccepted && !isAcceptSuccess && !isFunded && !isFundSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && (
+        <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
+          <p className="text-sm text-orange-700">
+            Waiting for the seller to accept this project before you can fund it.
+          </p>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="mb-6 flex gap-1 rounded-xl border border-zinc-300 bg-zinc-50 p-1">
         {(["overview", "timeline"] as const).map((tab) => (
@@ -1313,68 +1375,6 @@ export default function ProjectDetailPage() {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {isSeller && !sellerAccepted && !isAcceptSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && userChecked && !isRegistered && (
-        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-          <h2 className="mb-2 text-lg font-semibold">Registration Required</h2>
-          <p className="mb-4 text-sm text-zinc-800">
-            You have been invited to this project. To accept or reject, you must first register your company on StablePay.
-          </p>
-          <a
-            href={`/register?redirect=/projects/${id}`}
-            className="inline-block rounded-lg bg-primary px-5 py-2 text-sm text-white transition-colors hover:brightness-110"
-          >
-            Register Company
-          </a>
-        </div>
-      )}
-
-      {isSeller && !sellerAccepted && !isAcceptSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && userChecked && isRegistered && (
-        <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
-          <h2 className="mb-2 text-lg font-semibold">Project Invitation</h2>
-          <p className="mb-4 text-sm text-zinc-800">
-            You have been invited to this project. Accept to allow the buyer to fund the escrow, or reject to cancel.
-          </p>
-          <div className="flex gap-3">
-            <button
-              onClick={handleAcceptProject}
-              disabled={isAcceptPending || isAcceptConfirming}
-              className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 disabled:opacity-50"
-            >
-              {isAcceptPending
-                ? "Confirm in Wallet..."
-                : isAcceptConfirming
-                ? "Waiting for Confirmation..."
-                : "Accept Project"}
-            </button>
-            <button
-              onClick={handleRejectProject}
-              disabled={isRejectPending || isRejectConfirming}
-              className="flex-1 rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-            >
-              {isRejectPending
-                ? "Confirm in Wallet..."
-                : isRejectConfirming
-                ? "Waiting for Confirmation..."
-                : "Reject Project"}
-            </button>
-          </div>
-          {acceptError && (
-            <p className="mt-2 text-xs text-red-500">{parseContractError(acceptError)}</p>
-          )}
-          {rejectError && (
-            <p className="mt-2 text-xs text-red-500">{parseContractError(rejectError)}</p>
-          )}
-        </div>
-      )}
-
-      {isBuyer && !sellerAccepted && !isAcceptSuccess && !isFunded && !isFundSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && (
-        <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
-          <p className="text-sm text-orange-700">
-            Waiting for the seller to accept this project before you can fund it.
-          </p>
         </div>
       )}
 
