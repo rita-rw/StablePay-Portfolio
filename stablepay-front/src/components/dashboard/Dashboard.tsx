@@ -71,8 +71,8 @@ export default function Dashboard() {
         idx++;
       }
       const status = deriveProjectStatus(funded, cancelled, sellerAccepted, milestoneStatuses);
-      if (status === "COMPLETED") result.completed++;
-      else if (status !== "CANCELLED") result.active++;
+      if (status === "COMPLETED" || status === "CANCELLED" || status === "SELLER_REJECTED") result.completed++;
+      else result.active++;
       if (hasDispute) result.disputed++;
       result.totalUSDC += BigInt(e.totalAmount);
     }

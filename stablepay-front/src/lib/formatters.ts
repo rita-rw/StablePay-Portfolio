@@ -85,7 +85,7 @@ export function deriveProjectStatus(
   milestoneStatuses: string[],
 ): string {
   if (cancelled) return "CANCELLED";
-  const allPaid = milestoneStatuses.length > 0 && milestoneStatuses.every((s) => s === "PAID" || s === "RESOLVED");
+  const allPaid = milestoneStatuses.length > 0 && milestoneStatuses.every((s) => s === "PAID" || s === "RESOLVED" || s === "REFUNDED");
   if (allPaid) return "COMPLETED";
   const hasActive = milestoneStatuses.some(
     (s) => s === "SUBMITTED" || s === "DISPUTED" || s === "RESOLVED" || s === "PAID",
