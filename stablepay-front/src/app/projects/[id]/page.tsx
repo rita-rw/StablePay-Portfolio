@@ -445,6 +445,9 @@ export default function ProjectDetailPage() {
   const [resubmitInputs, setResubmitInputs] = useState<Record<number, string>>({});
   const [deliverySaveError, setDeliverySaveError] = useState<Record<number, string>>({});
   const [optimisticDeliveries, setOptimisticDeliveries] = useState<Record<number, string>>({});
+  // Chain receipt arrived, backend status not synced yet. Keeps the card in its
+  // final submitted layout so it doesn't jump again when the listener catches up.
+  const [confirmedSubmits, setConfirmedSubmits] = useState<Set<number>>(new Set());
   const [optimisticDisputes, setOptimisticDisputes] = useState<Record<number, string>>({});
   const [escalationReasons, setEscalationReasons] = useState<Record<number, string>>({});
   const [escalationExpanded, setEscalationExpanded] = useState<Record<number, boolean>>({});
@@ -660,13 +663,21 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     if (!isSubmitSuccess || lastSubmittedIndexRef.current === null) return;
-    setProcessingMilestones((prev) => new Map(prev).set(lastSubmittedIndexRef.current!, "SUBMITTED"));
+    const index = lastSubmittedIndexRef.current;
+    setProcessingMilestones((prev) => new Map(prev).set(index, "SUBMITTED"));
+    setConfirmedSubmits((prev) => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
 
-    // Save delivery reference to backend only after tx confirms
-    // Retry up to 3 times with delay — listener may not have updated milestone status yet
+    // Save delivery reference to backend only after tx confirms.
+    // The card switches to the submitted layout at this point — once — and
+    // stays there while the listener catches up.
     if (pendingDeliveryRef.current) {
       const { milestoneIndex, reference } = pendingDeliveryRef.current;
       pendingDeliveryRef.current = null;
+      setOptimisticDeliveries((prev) => ({ ...prev, [milestoneIndex]: reference }));
       const apiUrl = API_URL;
       if (apiUrl && walletClient) {
         const saveWithRetry = async (attempts: number) => {
@@ -682,6 +693,11 @@ export default function ProjectDetailPage() {
             if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
           }
           // Retry exhausted — roll back optimistic state and restore input
+          setConfirmedSubmits((prev) => {
+            const next = new Set(prev);
+            next.delete(milestoneIndex);
+            return next;
+          });
           setOptimisticDeliveries((prev) => { const next = { ...prev }; delete next[milestoneIndex]; return next; });
           setDeliveryInputs((prev) => ({ ...prev, [milestoneIndex]: reference }));
           setDeliverySaveError((prev) => ({ ...prev, [milestoneIndex]: "Could not save delivery reference. Please try again." }));
@@ -770,15 +786,24 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (processingMilestones.size === 0) return;
     const updated = new Map(processingMilestones);
+    const syncedSubmits: number[] = [];
     let changed = false;
     for (const [idx, expectedStatus] of processingMilestones) {
       const m = enrichedMilestones.find((m) => m.milestoneIndex === idx);
       if (m && m.status === expectedStatus) {
         updated.delete(idx);
         changed = true;
+        if (expectedStatus === "SUBMITTED") syncedSubmits.push(idx);
       }
     }
     if (changed) setProcessingMilestones(updated);
+    if (syncedSubmits.length > 0) {
+      setConfirmedSubmits((prev) => {
+        const next = new Set(prev);
+        for (const idx of syncedSubmits) next.delete(idx);
+        return next;
+      });
+    }
   }, [enrichedMilestones, processingMilestones]);
 
   function handleApprove() {
@@ -891,10 +916,8 @@ export default function ProjectDetailPage() {
     const ref = deliveryInputs[milestoneIndex]?.trim();
     if (!ref) return;
 
-    // Store reference — it will be saved to backend only after tx confirms
+    // Store reference — shown in the card only after the tx confirms
     pendingDeliveryRef.current = { milestoneIndex, reference: ref };
-    // Show delivery immediately in UI without waiting for backend
-    setOptimisticDeliveries((prev) => ({ ...prev, [milestoneIndex]: ref }));
 
     const deliveryHash = keccak256(toHex(ref));
     writeSubmit({
@@ -1366,6 +1389,15 @@ export default function ProjectDetailPage() {
             const displayStatus = (isCancelled || isCancelSuccess) && m.status !== "PAID"
               ? "REFUNDED"
               : m.status;
+            const processingAs = processingMilestones.get(m.milestoneIndex);
+            const locallySubmitted = confirmedSubmits.has(m.milestoneIndex);
+            const showProcessingBadge = processingAs != null && !(processingAs === "SUBMITTED" && locallySubmitted);
+            const badgeStatus =
+              locallySubmitted && (displayStatus === "PENDING" || displayStatus === "DISPUTED")
+                ? "SUBMITTED"
+                : displayStatus;
+            const submittingThis =
+              (isSubmitPending || isSubmitConfirming) && lastSubmittedIndexRef.current === m.milestoneIndex;
             return (
             <div
               key={m.milestoneIndex}
@@ -1373,7 +1405,7 @@ export default function ProjectDetailPage() {
             >
               <div className="mb-2 flex items-center justify-between">
                 <p className="font-medium">Milestone {m.milestoneIndex + 1}</p>
-                {processingMilestones.has(m.milestoneIndex) ? (
+                {showProcessingBadge ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 border border-orange-200 px-3 py-1 text-xs font-medium text-orange-600">
                     <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -1383,27 +1415,27 @@ export default function ProjectDetailPage() {
                   </span>
                 ) : (
                   <span className={`rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide border ${
-                    displayStatus === "PAID"
+                    badgeStatus === "PAID"
                       ? "bg-zinc-800 border-zinc-800 text-white"
-                      : displayStatus === "SUBMITTED"
+                      : badgeStatus === "SUBMITTED"
                       ? "bg-zinc-700 border-zinc-700 text-white"
-                      : displayStatus === "DISPUTED"
+                      : badgeStatus === "DISPUTED"
                       ? "bg-zinc-100 border-red-300 text-red-600"
-                      : displayStatus === "ESCALATED"
+                      : badgeStatus === "ESCALATED"
                       ? "bg-orange-50 border-orange-400 text-orange-600"
-                      : displayStatus === "REFUNDED"
+                      : badgeStatus === "REFUNDED"
                       ? "bg-zinc-800 border-zinc-800 text-white"
-                      : displayStatus === "RESOLVED"
+                      : badgeStatus === "RESOLVED"
                       ? "bg-zinc-800 border-zinc-800 text-white"
                       : "bg-zinc-100 border-zinc-200 text-zinc-500"
                   }`}>
-                    {displayStatus === "RESOLVED"
+                    {badgeStatus === "RESOLVED"
                       ? "RESOLVED & PAID"
-                      : displayStatus === "PAID" && !!m.disputeOpenedAt
+                      : badgeStatus === "PAID" && !!m.disputeOpenedAt
                       ? "RESOLVED & PAID"
-                      : displayStatus === "REFUNDED" && !!m.disputeOpenedAt
+                      : badgeStatus === "REFUNDED" && !!m.disputeOpenedAt
                       ? "DISPUTE REFUNDED"
-                      : displayStatus}
+                      : badgeStatus}
                   </span>
                 )}
               </div>
@@ -1650,7 +1682,9 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
               )}
-              {isSeller && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && (
+              {isSeller &&
+                (displayStatus === "SUBMITTED" || locallySubmitted) &&
+                (processingAs == null || processingAs === "SUBMITTED") && (
                 <div className="mt-3 space-y-2">
                   <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
                     <p className="text-sm font-medium text-blue-800">Delivery submitted</p>
@@ -1676,7 +1710,7 @@ export default function ProjectDetailPage() {
                   )}
                 </div>
               )}
-              {isSeller && displayStatus === "PENDING" && !processingMilestones.has(m.milestoneIndex) && (
+              {isSeller && displayStatus === "PENDING" && !processingMilestones.has(m.milestoneIndex) && !locallySubmitted && (
                 <div className="mt-3 space-y-2">
                   <input
                     type="text"
@@ -1686,7 +1720,8 @@ export default function ProjectDetailPage() {
                       setDeliveryInputs((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))
                     }
                     maxLength={500}
-                    className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    disabled={submittingThis}
+                    className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
                   />
                   <button
                     onClick={() => handleSubmitDelivery(m.milestoneIndex)}
