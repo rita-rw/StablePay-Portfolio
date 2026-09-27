@@ -122,58 +122,61 @@ export default function Header() {
   });
   const pathname = usePathname();
   const isLanding = pathname === "/" || pathname === "/faq" || pathname === "/register" || pathname.startsWith("/projects") || pathname.startsWith("/dispute-management") || pathname.startsWith("/admin-settings");
+  const appNavLinks = (
+    <>
+      <Link href="/" className="text-zinc-500 hover:text-zinc-900 transition-colors">
+        Dashboard
+      </Link>
+      <Link href="/projects" className="text-zinc-500 hover:text-zinc-900 transition-colors">
+        {isPlatform ? "All Projects" : "My Projects"}
+      </Link>
+      {isPlatform && (
+        <Link href="/dispute-management" className="text-zinc-500 hover:text-zinc-900 transition-colors">
+          Dispute Management
+        </Link>
+      )}
+      {isPlatform && (
+        <Link href="/admin-settings" className="text-zinc-500 hover:text-zinc-900 transition-colors">
+          Admin Settings
+        </Link>
+      )}
+    </>
+  );
 
   return (
-    <header className={`relative sticky top-0 z-50 border-b print:hidden ${isLanding ? "bg-white border-zinc-200" : "glass border-border/50"}`}>
-      <div className="flex h-16 w-full items-center">
-        <Link href="/" className="z-10 flex shrink-0 items-center gap-2.5 pl-8 sm:pl-16">
+    <header className={`sticky top-0 z-50 border-b print:hidden ${isLanding ? "bg-white border-zinc-200" : "glass border-border/50"}`}>
+      <div className="flex min-h-16 w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-8">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg [print-color-adjust:exact]" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.45), inset 0 1px 0 hsl(210 100% 80% / 0.15)" }}>
             <Shield className="h-5 w-5 text-primary-foreground" />
           </div>
           <span className={`text-xl font-bold ${isLanding ? "text-zinc-900" : "gradient-text"}`}>StablePay</span>
         </Link>
 
-        <div className="absolute top-1/2 flex -translate-y-1/2 items-center left-[max(17rem,calc((100%-56rem)/2+1rem))]">
-          {(pathname === "/" || pathname === "/faq") && !showNav && !sessionPending && (
-            <nav className="hidden md:flex items-center gap-8 text-sm">
-              <Link href="/#how-it-works" className="text-zinc-500 hover:text-zinc-900 transition-colors">How it works</Link>
-              <Link href="/#pricing" className="text-zinc-500 hover:text-zinc-900 transition-colors">Pricing</Link>
-              <Link href="/faq" className="text-zinc-500 hover:text-zinc-900 transition-colors">FAQ</Link>
-            </nav>
-          )}
-          {showNav && (
-            <nav className="flex items-center gap-4 whitespace-nowrap text-sm xl:gap-8">
-              <Link href="/" className="text-zinc-500 hover:text-zinc-900 transition-colors">
-                Dashboard
-              </Link>
-              <Link href="/projects" className="text-zinc-500 hover:text-zinc-900 transition-colors">
-                {isPlatform ? "All Projects" : "My Projects"}
-              </Link>
-              {isPlatform && (
-                <Link href="/dispute-management" className="text-zinc-500 hover:text-zinc-900 transition-colors">
-                  Dispute Management
-                </Link>
-              )}
-              {isPlatform && (
-                <Link href="/admin-settings" className="text-zinc-500 hover:text-zinc-900 transition-colors">
-                  Admin Settings
-                </Link>
-              )}
-            </nav>
-          )}
-        </div>
-      </div>
-      <div className="absolute right-8 top-1/2 flex -translate-y-1/2 items-center gap-4 whitespace-nowrap">
+        {(pathname === "/" || pathname === "/faq") && !showNav && !sessionPending && (
+          <nav className="hidden min-w-0 flex-1 items-center gap-8 text-sm md:flex">
+            <Link href="/#how-it-works" className="text-zinc-500 hover:text-zinc-900 transition-colors">How it works</Link>
+            <Link href="/#pricing" className="text-zinc-500 hover:text-zinc-900 transition-colors">Pricing</Link>
+            <Link href="/faq" className="text-zinc-500 hover:text-zinc-900 transition-colors">FAQ</Link>
+          </nav>
+        )}
+        {showNav && (
+          <nav className="order-last flex w-full flex-wrap items-center gap-x-10 gap-y-1 text-sm xl:hidden">
+            {appNavLinks}
+          </nav>
+        )}
+
+        <div className="ml-auto flex shrink-0 items-center gap-3">
           {showNav && !isPlatform && user?.companyName && (
             <Link
               href="/account"
-              className="whitespace-nowrap text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
+              className="max-w-[9rem] truncate text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
             >
               {user.companyName}
             </Link>
           )}
           {showNav && isPlatform && (
-            <span className="hidden sm:inline rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+            <span className="hidden rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary sm:inline">
               Admin
             </span>
           )}
@@ -228,6 +231,16 @@ export default function Header() {
             </ConnectButton.Custom>
           </div>
         </div>
+      </div>
+      {showNav && (
+        <div className="pointer-events-none absolute inset-0 z-10 hidden xl:block">
+          <div className="mx-auto flex h-full max-w-4xl items-center px-4">
+            <nav className="pointer-events-auto flex flex-wrap items-center gap-x-20 gap-y-1 text-sm">
+              {appNavLinks}
+            </nav>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
