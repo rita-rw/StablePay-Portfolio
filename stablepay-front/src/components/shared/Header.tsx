@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import Link from "next/link";
 import { useAccount, useReadContract } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
@@ -102,6 +102,44 @@ export default function Header() {
 
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());
   const showNav = mounted && isConnected && (isRegistered || isPlatform);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const logoRef = useRef<HTMLAnchorElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const walletRef = useRef<HTMLDivElement>(null);
+  const [navOnOwnRow, setNavOnOwnRow] = useState(false);
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const logo = logoRef.current;
+    const nav = navRef.current;
+    const wallet = walletRef.current;
+    if (!row || !logo || !wallet) return;
+
+    const measure = () => {
+      if (!nav || getComputedStyle(nav).display === "none") {
+        setNavOnOwnRow(false);
+        return;
+      }
+
+      const rowStyle = getComputedStyle(row);
+      const pad =
+        Number.parseFloat(rowStyle.paddingLeft) + Number.parseFloat(rowStyle.paddingRight);
+      const rowGap = Number.parseFloat(rowStyle.columnGap) || 0;
+      const linkGap = Number.parseFloat(getComputedStyle(nav).columnGap) || 0;
+      const children = Array.from(nav.children) as HTMLElement[];
+      const linksWidth =
+        children.reduce((sum, el) => sum + el.offsetWidth, 0) +
+        linkGap * Math.max(0, children.length - 1);
+      const needed = logo.offsetWidth + linksWidth + wallet.offsetWidth + rowGap * 2;
+      const available = row.clientWidth - pad;
+      setNavOnOwnRow(needed > available + 1);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [showNav, isPlatform, user?.companyName, mounted]);
   const sessionPending = !mounted || status === "connecting" || status === "reconnecting" || (mounted && isConnected && !checked);
   const activeChainId =
     typeof walletChainId === "number"
@@ -145,8 +183,8 @@ export default function Header() {
 
   return (
     <header className={`sticky top-0 z-50 border-b print:hidden ${isLanding ? "bg-white border-zinc-200" : "glass border-border/50"}`}>
-      <div className="flex min-h-16 w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-8">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5">
+      <div ref={rowRef} className="flex min-h-16 w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-8">
+        <Link ref={logoRef} href="/" className="flex shrink-0 items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg [print-color-adjust:exact]" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.45), inset 0 1px 0 hsl(210 100% 80% / 0.15)" }}>
             <Shield className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -161,12 +199,17 @@ export default function Header() {
           </nav>
         )}
         {showNav && (
-          <nav className="order-last flex w-full flex-wrap items-center gap-x-10 gap-y-1 text-sm xl:hidden">
+          <nav
+            ref={navRef}
+            className={`flex items-center gap-x-10 gap-y-1 text-sm xl:hidden ${
+              navOnOwnRow ? "order-last w-full flex-wrap" : "shrink-0 flex-nowrap"
+            }`}
+          >
             {appNavLinks}
           </nav>
         )}
 
-        <div className="ml-auto flex shrink-0 items-center gap-3">
+        <div ref={walletRef} className="ml-auto flex shrink-0 items-center gap-3">
           {showNav && !isPlatform && user?.companyName && (
             <Link
               href="/account"
