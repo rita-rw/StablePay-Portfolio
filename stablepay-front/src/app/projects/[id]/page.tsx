@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, type TextareaHTMLAttributes } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
@@ -13,6 +13,33 @@ import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, 
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { authFetch } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
+
+function GrowingTextarea({
+  value,
+  className,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, 160);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > 160 ? "auto" : "hidden";
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      {...props}
+      className={`max-h-40 resize-none break-words ${className ?? ""}`}
+    />
+  );
+}
 
 const ERC20_ABI = [
   {
@@ -1871,7 +1898,7 @@ export default function ProjectDetailPage() {
                     {(m.deliveryReference || optimisticDeliveries[m.milestoneIndex]) && (
                       <div className="mt-3 rounded-lg border border-zinc-900 bg-zinc-50 p-3 text-xs">
                         <p className="mb-1 font-semibold text-zinc-500 uppercase tracking-wider text-[10px]">Seller delivery message</p>
-                        <p className="text-zinc-800">{m.deliveryReference ?? optimisticDeliveries[m.milestoneIndex]}</p>
+                        <p className="whitespace-pre-wrap break-words text-zinc-800">{m.deliveryReference ?? optimisticDeliveries[m.milestoneIndex]}</p>
                       </div>
                     )}
                     {(displayStatus === "ESCALATED" || processingMilestones.get(m.milestoneIndex) === "ESCALATED") && (
@@ -2040,8 +2067,7 @@ export default function ProjectDetailPage() {
               )}
               {isSeller && displayStatus === "PENDING" && !processingMilestones.has(m.milestoneIndex) && !locallySubmitted && (
                 <div className="mt-3 space-y-2">
-                  <input
-                    type="text"
+                  <GrowingTextarea
                     placeholder="Delivery reference (URL, IPFS hash, description...)"
                     value={deliveryInputs[m.milestoneIndex] ?? ""}
                     onChange={(e) =>
@@ -2076,8 +2102,7 @@ export default function ProjectDetailPage() {
                 isDisputeResubmitWindow(m.disputeOpenedAt) && (
                 <div className="mt-3 space-y-2">
                   <p className="text-xs text-zinc-700">You can resubmit your delivery within the {dayLabel(correctionWindowDays)} correction window.</p>
-                  <input
-                    type="text"
+                  <GrowingTextarea
                     placeholder="New delivery reference (URL, IPFS hash, description...)"
                     value={resubmitInputs[m.milestoneIndex] ?? ""}
                     onChange={(e) =>

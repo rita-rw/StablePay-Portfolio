@@ -349,7 +349,7 @@ export default function AdminProjectDisputesPage() {
                   <div className="rounded-lg border border-zinc-900 bg-zinc-50 px-4 py-3">
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Seller delivery message</p>
                     {backendMilestones[dispute.milestoneIndex]?.deliveryReference
-                      ? <p className="text-sm text-zinc-800">{backendMilestones[dispute.milestoneIndex].deliveryReference}</p>
+                      ? <p className="whitespace-pre-wrap break-words text-sm text-zinc-800">{backendMilestones[dispute.milestoneIndex].deliveryReference}</p>
                       : <p className="text-sm text-zinc-400 italic">No delivery submitted</p>
                     }
                   </div>
