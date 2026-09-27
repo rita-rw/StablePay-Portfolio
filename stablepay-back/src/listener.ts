@@ -956,9 +956,15 @@ export async function startListener() {
 
           console.log("[MilestoneResubmitted]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex) });
 
+          const submittedDate = await blockDate(client, log.blockNumber);
           await prisma.milestone.update({
             where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: { status: "SUBMITTED" },
+            data: {
+              status: "SUBMITTED",
+              submittedAt: submittedDate,
+              // Contract resets the dispute. A later buyer approval must be a normal payout.
+              ...clearedDisputeData(),
+            },
           });
         } catch (err) {
           console.error("[listener] MilestoneResubmitted DB update failed", err);
@@ -1251,6 +1257,45 @@ async function backfillFromHistory(factoryAddress: `0x${string}`, startToken: nu
  * Called lazily by the events endpoint so timeline is always up-to-date,
  * even if the real-time watchers missed events.
  */
+/** Dispute fields the contract zeroes in resubmitDuringDispute. */
+function clearedDisputeData() {
+  return {
+    disputeOpenedAt: null,
+    disputeOpenedBy: null,
+    disputeReason: null,
+    isEscalated: false,
+    disputeEscalatedAt: null,
+    disputeEscalatedBy: null,
+    escalationReason: null,
+  };
+}
+
+function disputeFieldsAreStale(
+  dbMilestone: {
+    disputeOpenedAt: Date | null;
+    disputeOpenedBy: string | null;
+    disputeReason: string | null;
+    isEscalated: boolean;
+    disputeEscalatedAt: Date | null;
+    escalationReason: string | null;
+  },
+  disputeOpenedAtTs: number,
+): boolean {
+  if (disputeOpenedAtTs !== 0) return false;
+  return dbMilestone.disputeOpenedAt != null
+    || dbMilestone.disputeOpenedBy != null
+    || dbMilestone.disputeReason != null
+    || dbMilestone.isEscalated
+    || dbMilestone.disputeEscalatedAt != null
+    || dbMilestone.escalationReason != null;
+}
+
+function submittedAtNeedsUpdate(existing: Date | null, chain: Date | null): boolean {
+  if (!chain) return false;
+  if (!existing) return true;
+  return Math.abs(existing.getTime() - chain.getTime()) > 1000;
+}
+
 export async function syncSingleEscrow(escrowId: string) {
   const address = escrowId as `0x${string}`;
 
@@ -1399,12 +1444,14 @@ export async function syncSingleEscrow(escrowId: string) {
         });
       } else {
         const needsStatusUpdate = dbMilestone.status !== onChainMilestoneStatus;
-        const needsSubmittedAt = !dbMilestone.submittedAt && submittedAtDate;
+        const needsSubmittedAt = submittedAtNeedsUpdate(dbMilestone.submittedAt, submittedAtDate);
         const needsDisputeAt = !dbMilestone.disputeOpenedAt && disputeOpenedAtDate;
+        const needsDisputeClear = disputeFieldsAreStale(dbMilestone, disputeOpenedAtTs);
         const needsPaidAt = !dbMilestone.paidAt && ["PAID", "RESOLVED", "REFUNDED"].includes(onChainMilestoneStatus);
         const needsAwardBackfill = (!dbMilestone.sellerAward || !dbMilestone.buyerAward)
           && ["PAID", "REFUNDED", "RESOLVED"].includes(onChainMilestoneStatus)
-          && (dbMilestone.isEscalated || dbMilestone.disputeOpenedAt != null);
+          && (dbMilestone.isEscalated || dbMilestone.disputeOpenedAt != null)
+          && !needsDisputeClear;
 
         let sellerAwardValue: string | undefined;
         let buyerAwardValue: string | undefined;
@@ -1434,7 +1481,7 @@ export async function syncSingleEscrow(escrowId: string) {
 
         const needsStatusCorrection = correctedStatus && dbMilestone.status !== correctedStatus;
 
-        if (needsStatusUpdate || needsSubmittedAt || needsDisputeAt || needsPaidAt || needsAwardBackfill || needsStatusCorrection) {
+        if (needsStatusUpdate || needsSubmittedAt || needsDisputeAt || needsDisputeClear || needsPaidAt || needsAwardBackfill || needsStatusCorrection) {
           await prisma.milestone.update({
             where: { escrowAddress_milestoneIndex: { escrowAddress: escrow.id, milestoneIndex: i } },
             data: {
@@ -1445,10 +1492,12 @@ export async function syncSingleEscrow(escrowId: string) {
               ...(needsDisputeAt
                 ? { disputeOpenedAt: disputeOpenedAtDate, disputeOpenedBy: getAddress(result[6] as `0x${string}`) }
                 : {}),
+              ...(needsDisputeClear ? clearedDisputeData() : {}),
               ...(sellerAwardValue ? { sellerAward: sellerAwardValue } : {}),
               ...(buyerAwardValue ? { buyerAward: buyerAwardValue } : {}),
             },
           });
+          if (needsDisputeClear) console.log(`[sync] ${escrow.id} milestone ${i}: cleared dispute after resubmit`);
         }
       }
     }
@@ -1571,12 +1620,14 @@ async function catchUpOnChainState(startToken: number) {
           console.log(`[catch-up] ${address} milestone ${i}: created with status ${rawOnChainStatus}`);
         } else {
           const needsStatusUpdate = dbMilestone.status !== onChainMilestoneStatus;
-          const needsSubmittedAt = !dbMilestone.submittedAt && submittedAtDate;
+          const needsSubmittedAt = submittedAtNeedsUpdate(dbMilestone.submittedAt, submittedAtDate);
           const needsDisputeAt = !dbMilestone.disputeOpenedAt && disputeOpenedAtDate;
+          const needsDisputeClear = disputeFieldsAreStale(dbMilestone, disputeOpenedAtTs);
           const needsPaidAt = !dbMilestone.paidAt && ["PAID", "RESOLVED", "REFUNDED"].includes(onChainMilestoneStatus);
           const needsAwardBackfill = (!dbMilestone.sellerAward || !dbMilestone.buyerAward)
             && ["PAID", "REFUNDED", "RESOLVED"].includes(onChainMilestoneStatus)
-            && (dbMilestone.isEscalated || dbMilestone.disputeOpenedAt != null);
+            && (dbMilestone.isEscalated || dbMilestone.disputeOpenedAt != null)
+            && !needsDisputeClear;
 
           let sellerAwardValue: string | undefined;
           let buyerAwardValue: string | undefined;
@@ -1604,7 +1655,7 @@ async function catchUpOnChainState(startToken: number) {
 
           const needsStatusCorrection = correctedStatus && dbMilestone.status !== correctedStatus;
 
-          if (needsStatusUpdate || needsSubmittedAt || needsDisputeAt || needsPaidAt || needsAwardBackfill || needsStatusCorrection) {
+          if (needsStatusUpdate || needsSubmittedAt || needsDisputeAt || needsDisputeClear || needsPaidAt || needsAwardBackfill || needsStatusCorrection) {
             await prisma.milestone.update({
               where: { escrowAddress_milestoneIndex: { escrowAddress: address, milestoneIndex: i } },
               data: {
@@ -1615,6 +1666,7 @@ async function catchUpOnChainState(startToken: number) {
                 ...(needsDisputeAt
                   ? { disputeOpenedAt: disputeOpenedAtDate, disputeOpenedBy: getAddress(result[6] as `0x${string}`) }
                   : {}),
+                ...(needsDisputeClear ? clearedDisputeData() : {}),
                 ...(sellerAwardValue ? { sellerAward: sellerAwardValue } : {}),
                 ...(buyerAwardValue ? { buyerAward: buyerAwardValue } : {}),
               },
@@ -1622,6 +1674,7 @@ async function catchUpOnChainState(startToken: number) {
             if (needsStatusUpdate) console.log(`[catch-up] ${address} milestone ${i}: ${dbMilestone.status} → ${needsStatusCorrection ? correctedStatus : onChainMilestoneStatus}`);
             if (needsSubmittedAt) console.log(`[catch-up] ${address} milestone ${i}: repaired submittedAt`);
             if (needsDisputeAt) console.log(`[catch-up] ${address} milestone ${i}: repaired disputeOpenedAt`);
+            if (needsDisputeClear) console.log(`[catch-up] ${address} milestone ${i}: cleared dispute after resubmit`);
           }
         }
       }

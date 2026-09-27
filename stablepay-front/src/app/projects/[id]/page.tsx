@@ -196,7 +196,12 @@ export default function ProjectDetailPage() {
           label: m.label ?? old.label,
           deliveryReference: m.deliveryReference ?? old.deliveryReference,
           submittedAt: m.submittedAt ?? old.submittedAt,
-          disputeReason: m.disputeReason ?? old.disputeReason,
+          // Public payloads omit these keys. A participant payload with null means the dispute was cleared.
+          disputeReason: "disputeReason" in m ? m.disputeReason : old.disputeReason,
+          disputeOpenedAt: "disputeOpenedAt" in m ? m.disputeOpenedAt : old.disputeOpenedAt,
+          disputeOpenedBy: "disputeOpenedBy" in m ? m.disputeOpenedBy : old.disputeOpenedBy,
+          isEscalated: "isEscalated" in m ? m.isEscalated : old.isEscalated,
+          escalationReason: "escalationReason" in m ? m.escalationReason : old.escalationReason,
         };
       });
     });
@@ -336,7 +341,8 @@ export default function ProjectDetailPage() {
         onChainDisputeOpenedBy !== zeroAddr &&
         onChainDisputeOpenedBy.toLowerCase() === (seller as string).toLowerCase()
       );
-      const isEscalated = m.isEscalated || onChainIsEscalated;
+      const disputeStillOpen = onChainDisputeOpenedAt > 0;
+      const isEscalated = disputeStillOpen && (m.isEscalated || onChainIsEscalated);
       const rawOnChainStatus = getMilestoneStatus(Number(result[1]));
       const terminalOnChain = rawOnChainStatus === "PAID" || rawOnChainStatus === "REFUNDED" || rawOnChainStatus === "RESOLVED";
       const onChainStatus = (isEscalated && !terminalOnChain) ? "ESCALATED" : (rawOnChainStatus ?? m.status);
@@ -345,8 +351,12 @@ export default function ProjectDetailPage() {
         isEscalated,
         status: onChainStatus,
         submittedAt: onChainSubmittedAt > 0 ? new Date(onChainSubmittedAt * 1000).toISOString() : m.submittedAt,
-        disputeOpenedAt: onChainDisputeOpenedAt > 0 ? new Date(onChainDisputeOpenedAt * 1000).toISOString() : m.disputeOpenedAt,
-        disputeOpenedBy: onChainDisputeOpenedBy && onChainDisputeOpenedBy !== zeroAddr ? onChainDisputeOpenedBy : m.disputeOpenedBy,
+        // resubmitDuringDispute zeroes the on-chain dispute. Do not keep the old DB row,
+        // or a later approval is shown as a dispute settlement.
+        disputeOpenedAt: disputeStillOpen ? new Date(onChainDisputeOpenedAt * 1000).toISOString() : null,
+        disputeOpenedBy: disputeStillOpen && onChainDisputeOpenedBy !== zeroAddr ? onChainDisputeOpenedBy : null,
+        disputeReason: disputeStillOpen ? m.disputeReason : null,
+        escalationReason: disputeStillOpen ? m.escalationReason : null,
       };
     });
   }, [milestones, onChainMilestones, seller]);
@@ -535,6 +545,69 @@ export default function ProjectDetailPage() {
   const [escalationReasons, setEscalationReasons] = useState<Record<number, string>>({});
   const [escalationExpanded, setEscalationExpanded] = useState<Record<number, boolean>>({});
   const [disputeExpanded, setDisputeExpanded] = useState<Record<number, boolean>>({});
+  // Last submission time we already reset the dispute draft for. A resubmit changes submittedAt.
+  const disputeDraftEpoch = useRef<Record<number, string>>({});
+
+  useEffect(() => {
+    setDisputeExpanded({});
+    setDisputeInputs({});
+    setOptimisticDisputes({});
+    setConfirmedDisputes(new Set());
+    disputeDraftEpoch.current = {};
+  }, [address]);
+
+  useEffect(() => {
+    const toClear: number[] = [];
+    for (const milestone of enrichedMilestones) {
+      if (milestone.status !== "SUBMITTED" || milestone.disputeOpenedAt) continue;
+      const epoch = milestone.submittedAt ?? "";
+      if (disputeDraftEpoch.current[milestone.milestoneIndex] === epoch) continue;
+      disputeDraftEpoch.current[milestone.milestoneIndex] = epoch;
+      toClear.push(milestone.milestoneIndex);
+    }
+    if (toClear.length === 0) return;
+    setDisputeExpanded((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const index of toClear) {
+        if (next[index]) {
+          next[index] = false;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setDisputeInputs((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const index of toClear) {
+        if (index in next) {
+          delete next[index];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setOptimisticDisputes((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const index of toClear) {
+        if (index in next) {
+          delete next[index];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setConfirmedDisputes((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const index of toClear) {
+        if (next.delete(index)) changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [enrichedMilestones]);
 
   // Tracks which milestones are waiting for backend to confirm the new status.
   // Map<milestoneIndex, expectedStatus> e.g. Map(0 → "PAID")
@@ -820,6 +893,14 @@ export default function ProjectDetailPage() {
     setConfirmedDisputes((prev) => {
       const next = new Set(prev);
       next.add(index);
+      return next;
+    });
+
+    setDisputeExpanded((prev) => ({ ...prev, [index]: false }));
+    setDisputeInputs((prev) => {
+      if (!(index in prev)) return prev;
+      const next = { ...prev };
+      delete next[index];
       return next;
     });
 
