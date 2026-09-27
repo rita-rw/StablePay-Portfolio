@@ -17,7 +17,11 @@ export const SetAutoApprovalDaysBody = z.object({
 });
 
 export const SetDisputeTimeoutDaysBody = z.object({
-  days: z.number().int().min(1),
+  days: z
+    .number()
+    .int("Dispute timeout must be a whole number of days.")
+    .min(14, "Minimum is 14 days.")
+    .max(180, "Maximum is 180 days."),
 });
 
 export const SetCorrectionWindowDaysBody = z.object({

@@ -28,6 +28,7 @@ function SettingRow({
   inputMin,
   inputMax,
   inputStep,
+  unit,
   loading,
   pending,
   result,
@@ -41,12 +42,14 @@ function SettingRow({
   inputMin: number;
   inputMax?: number;
   inputStep?: number;
+  unit?: string;
   loading: boolean;
   pending: boolean;
   result: TxResult | null;
   onSubmit: (value: number) => void;
 }) {
   const [inputVal, setInputVal] = useState("");
+  const [rangeError, setRangeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (result?.ok) setInputVal("");
@@ -75,7 +78,10 @@ function SettingRow({
           max={inputMax}
           step={inputStep ?? 1}
           value={inputVal}
-          onChange={(e) => setInputVal(e.target.value)}
+          onChange={(e) => {
+            setInputVal(e.target.value);
+            setRangeError(null);
+          }}
           placeholder={inputLabel}
           disabled={pending}
           className="w-40 rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
@@ -83,7 +89,18 @@ function SettingRow({
         <button
           onClick={() => {
             const v = parseFloat(inputVal);
-            if (!isNaN(v)) onSubmit(v);
+            if (isNaN(v)) return;
+            const suffix = unit ? ` ${unit}` : "";
+            if (v < inputMin) {
+              setRangeError(`Minimum is ${inputMin}${suffix}.`);
+              return;
+            }
+            if (inputMax !== undefined && v > inputMax) {
+              setRangeError(`Maximum is ${inputMax}${suffix}.`);
+              return;
+            }
+            setRangeError(null);
+            onSubmit(v);
           }}
           disabled={pending || inputVal === ""}
           className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-40"
@@ -92,7 +109,9 @@ function SettingRow({
         </button>
       </div>
 
-      {result && (
+      {rangeError && <p className="mt-3 text-xs text-red-600">{rangeError}</p>}
+
+      {result && !rangeError && (
         <div className="mt-3">
           {result.ok && result.txHash ? (
             <p className="text-xs text-emerald-600">
@@ -267,10 +286,12 @@ export default function AdminSettings() {
 
           <SettingRow
             label="Dispute Timeout Days"
-            description="Days before an open dispute times out."
+            description="Days before an open dispute times out. Minimum 14 days, maximum 180."
             currentValue={disputeTimeoutNum !== null ? `${disputeTimeoutNum} days` : "—"}
             inputLabel="Days"
-            inputMin={1}
+            inputMin={14}
+            inputMax={180}
+            unit="days"
             loading={loadingDisputeTimeout}
             pending={pending.disputeTimeout}
             result={results.disputeTimeout}
