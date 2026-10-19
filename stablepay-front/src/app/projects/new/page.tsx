@@ -115,7 +115,7 @@ export default function CreateProjectPage() {
       seedProject(walletClient, {
         escrowAddress: args.escrow,
         metadataHash: args.metadataHash,
-        title: title || "Untitled Project",
+        title: title.trim(),
         description: description || null,
         txHash: receipt.transactionHash,
       }).catch(() => {}); // listener is the fallback if this fails
@@ -171,6 +171,11 @@ export default function CreateProjectPage() {
   }
 
   async function handleSubmit() {
+    if (!title.trim()) {
+      setValidationError("Project title is required.");
+      return;
+    }
+
     if (!sellerAddress) {
       setValidationError("Seller address is required.");
       return;
@@ -228,7 +233,7 @@ export default function CreateProjectPage() {
     }
     try {
       const result = await saveProjectMetadata(walletClient, {
-        title: title.trim() || "Untitled Project",
+        title: title.trim(),
         description: description.trim() || null,
         metadataHash,
         milestoneLabels,

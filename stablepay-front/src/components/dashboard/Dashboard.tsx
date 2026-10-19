@@ -303,6 +303,9 @@ export default function Dashboard() {
                       <p className="font-semibold text-zinc-900 group-hover:text-primary transition-colors">
                         {escrow.title ? decodeTitle(escrow.title) : `${escrow.id.slice(0, 6)}...${escrow.id.slice(-4)}`}
                       </p>
+                      <p className="font-mono text-xs text-zinc-400 mt-0.5">
+                        {escrow.id.slice(0, 6)}...{escrow.id.slice(-4)}
+                      </p>
                       <p className="text-sm text-zinc-700 mt-0.5">
                         {role} &middot; {escrow.milestoneCount} milestone{escrow.milestoneCount !== 1 ? "s" : ""} &middot; {formatUnits(BigInt(escrow.totalAmount), 6)} USDC
                       </p>

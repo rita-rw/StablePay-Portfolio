@@ -31,6 +31,7 @@ export const SeedProjectBody = z.object({
 export const MetadataBody = z.object({
   title: z
     .string("title is required")
+    .trim()
     .min(1, "title is required")
     .max(MAX_TITLE, `title must be at most ${MAX_TITLE} characters`),
   description: z
