@@ -156,7 +156,7 @@ export default function Header() {
     abi: ERC20_BALANCE_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: mounted && isConnected && !!address && !isWrongNetwork },
+    query: { enabled: mounted && isConnected && !!address && !isWrongNetwork, refetchInterval: 5000 },
   });
   const pathname = usePathname();
   const isLanding = pathname === "/" || pathname === "/faq" || pathname === "/register" || pathname.startsWith("/projects") || pathname.startsWith("/dispute-management") || pathname.startsWith("/admin-settings");

@@ -1934,7 +1934,7 @@ export default function ProjectDetailPage() {
                     {displayStatus === "PAID" && !hadDispute && (locallyPaid || !processingMilestones.has(m.milestoneIndex)) && (
                       <div className="mt-3 border-l-2 border-blue-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md">
                         <p className="font-semibold text-zinc-500 uppercase tracking-wider text-[10px] mb-1">Approval</p>
-                        <p className="text-zinc-800">Buyer accepted delivery and released payment.</p>
+                        <p className="text-zinc-800">Payment released to the seller.</p>
                       </div>
                     )}
                     {["PAID", "REFUNDED", "RESOLVED"].includes(displayStatus) && paymentBreakdown}
@@ -1950,81 +1950,85 @@ export default function ProjectDetailPage() {
                     return (
                       <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                         {ready
-                          ? "The approval window has ended. This payment will be released to the seller automatically if you don't approve or dispute."
+                          ? "The approval window has ended. The seller can now claim this payment."
                           : `If you don't approve or dispute, this payment will be released to the seller automatically on ${formatAutoRelease(releaseAt)}.`}
                       </p>
                     );
                   })()}
-                  {(() => {
-                    const isThisMilestone = approveIndex === m.milestoneIndex;
-                    const isBusy = isApproveMilestonePending || isApproveMilestoneConfirming;
-                    // Hide button on other milestones while one is being approved
-                    if (isBusy && !isThisMilestone) return null;
-                    return (
-                      <button
-                        onClick={() => handleApproveMilestone(m.milestoneIndex)}
-                        disabled={isBusy}
-                        className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 disabled:opacity-50"
-                      >
-                        {isApproveMilestonePending && isThisMilestone
-                          ? "Confirm in Wallet..."
-                          : isApproveMilestoneConfirming && isThisMilestone
-                          ? "Waiting for Confirmation..."
-                          : "Approve & Release Payment"}
-                      </button>
-                    );
-                  })()}
-                  {approveMilestoneError && (
-                    <p className="text-xs text-red-500">{parseContractError(approveMilestoneError)}</p>
-                  )}
-                  <div className="space-y-2">
-                    {!disputeExpanded[m.milestoneIndex] ? (
-                      <button
-                        onClick={() => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: true }))}
-                        className="w-full rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
-                      >
-                        Open Dispute
-                      </button>
-                    ) : (
-                      <div className="rounded-lg border border-red-500 bg-white p-3 space-y-2">
-                        <p className="text-xs font-semibold text-red-600 uppercase tracking-wider">Open Dispute</p>
-                        <textarea
-                          value={disputeInputs[m.milestoneIndex] ?? ""}
-                          onChange={(e) =>
-                            setDisputeInputs((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))
-                          }
-                          placeholder="Dispute reason (e.g. work not delivered as agreed)"
-                          maxLength={500}
-                          rows={3}
-                          disabled={disputingThis}
-                          className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200 resize-none disabled:opacity-60"
-                        />
-                        <div className="flex gap-2">
+                  {!isAutoApprovalReady(m.submittedAt) && (
+                    <>
+                      {(() => {
+                        const isThisMilestone = approveIndex === m.milestoneIndex;
+                        const isBusy = isApproveMilestonePending || isApproveMilestoneConfirming;
+                        // Hide button on other milestones while one is being approved
+                        if (isBusy && !isThisMilestone) return null;
+                        return (
                           <button
-                            onClick={() => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: false }))}
-                            disabled={disputingThis}
-                            className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+                            onClick={() => handleApproveMilestone(m.milestoneIndex)}
+                            disabled={isBusy}
+                            className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 disabled:opacity-50"
                           >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => handleOpenDispute(m.milestoneIndex)}
-                            disabled={!disputeInputs[m.milestoneIndex]?.trim() || isOpenDisputePending || isOpenDisputeConfirming}
-                            className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-                          >
-                            {isOpenDisputePending && disputeIndex === m.milestoneIndex
+                            {isApproveMilestonePending && isThisMilestone
                               ? "Confirm in Wallet..."
-                              : isOpenDisputeConfirming && disputeIndex === m.milestoneIndex
-                              ? "Waiting..."
-                              : "Confirm Dispute"}
+                              : isApproveMilestoneConfirming && isThisMilestone
+                              ? "Waiting for Confirmation..."
+                              : "Approve & Release Payment"}
                           </button>
-                        </div>
+                        );
+                      })()}
+                      {approveMilestoneError && (
+                        <p className="text-xs text-red-500">{parseContractError(approveMilestoneError)}</p>
+                      )}
+                      <div className="space-y-2">
+                        {!disputeExpanded[m.milestoneIndex] ? (
+                          <button
+                            onClick={() => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: true }))}
+                            className="w-full rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
+                          >
+                            Open Dispute
+                          </button>
+                        ) : (
+                          <div className="rounded-lg border border-red-500 bg-white p-3 space-y-2">
+                            <p className="text-xs font-semibold text-red-600 uppercase tracking-wider">Open Dispute</p>
+                            <textarea
+                              value={disputeInputs[m.milestoneIndex] ?? ""}
+                              onChange={(e) =>
+                                setDisputeInputs((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))
+                              }
+                              placeholder="Dispute reason (e.g. work not delivered as agreed)"
+                              maxLength={500}
+                              rows={3}
+                              disabled={disputingThis}
+                              className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200 resize-none disabled:opacity-60"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: false }))}
+                                disabled={disputingThis}
+                                className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleOpenDispute(m.milestoneIndex)}
+                                disabled={!disputeInputs[m.milestoneIndex]?.trim() || isOpenDisputePending || isOpenDisputeConfirming}
+                                className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                              >
+                                {isOpenDisputePending && disputeIndex === m.milestoneIndex
+                                  ? "Confirm in Wallet..."
+                                  : isOpenDisputeConfirming && disputeIndex === m.milestoneIndex
+                                  ? "Waiting..."
+                                  : "Confirm Dispute"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {openDisputeError && (
+                          <p className="text-xs text-red-500">{parseContractError(openDisputeError)}</p>
+                        )}
                       </div>
-                    )}
-                    {openDisputeError && (
-                      <p className="text-xs text-red-500">{parseContractError(openDisputeError)}</p>
-                    )}
-                  </div>
+                    </>
+                  )}
                 </div>
               )}
               {isSeller &&
