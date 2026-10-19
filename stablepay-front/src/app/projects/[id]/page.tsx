@@ -2135,7 +2135,8 @@ export default function ProjectDetailPage() {
                 </div>
               )}
               {isSeller && displayStatus === "DISPUTED" && !processingMilestones.has(m.milestoneIndex) &&
-                m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase() && (
+                m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase() &&
+                !isDisputeTimeoutReady(m.disputeOpenedAt) && (
                 <div className="mt-3">
                   {!escalationExpanded[m.milestoneIndex] ? (
                     <button
@@ -2206,7 +2207,9 @@ export default function ProjectDetailPage() {
                       ? "Confirm in Wallet..."
                       : isDisputeTimeoutConfirming && timeoutIndex === m.milestoneIndex
                       ? "Waiting for Confirmation..."
-                      : `Claim Timeout Refund (${dayLabel(disputeTimeoutDays)} elapsed)`}
+                      : isBuyer
+                      ? `Claim Timeout Refund (${dayLabel(disputeTimeoutDays)} elapsed)`
+                      : "Close Dispute (refund buyer)"}
                   </button>
                   {disputeTimeoutError && (
                     <p className="mt-1 text-xs text-red-500">{parseContractError(disputeTimeoutError)}</p>
