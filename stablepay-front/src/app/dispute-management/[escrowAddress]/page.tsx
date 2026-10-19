@@ -300,7 +300,7 @@ export default function AdminProjectDisputesPage() {
                       </span>
                     </p>
                     {backendMilestones[dispute.milestoneIndex]?.label?.trim() && (
-                      <p className="mt-0.5 text-sm font-normal text-zinc-500">
+                      <p className="mt-0.5 whitespace-pre-line text-sm font-normal text-zinc-500">
                         {backendMilestones[dispute.milestoneIndex]?.label?.trim()}
                       </p>
                     )}

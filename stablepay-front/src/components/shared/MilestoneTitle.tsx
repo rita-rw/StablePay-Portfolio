@@ -16,7 +16,7 @@ export function MilestoneTitle({
   return (
     <div>
       <p className={titleClassName}>Milestone {index + 1}</p>
-      {description ? <p className={descriptionClassName}>{description}</p> : null}
+      {description ? <p className={`whitespace-pre-line ${descriptionClassName}`}>{description}</p> : null}
     </div>
   );
 }

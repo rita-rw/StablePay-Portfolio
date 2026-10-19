@@ -63,7 +63,7 @@ model Milestone {
   escrowAddress     String          @db.VarChar(42)
   milestoneIndex    Int
   amount            String          @db.VarChar(78)
-  label             String?         @db.VarChar(100)
+  label             String?         @db.VarChar(500)
   status            MilestoneStatus @default(PENDING)
   deliveryReference String?         @db.VarChar(1000)
   submittedAt       DateTime?

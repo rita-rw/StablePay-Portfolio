@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Milestone" ALTER COLUMN "label" SET DATA TYPE VARCHAR(500);

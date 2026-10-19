@@ -391,14 +391,14 @@ export default function CreateProjectPage() {
                   <div key={i} className="rounded-xl border border-zinc-300 bg-white overflow-hidden">
                     <div className="p-3">
                       <p className="mb-2 text-sm font-semibold text-zinc-900">Milestone {i + 1}</p>
-                      <div className="flex gap-2">
-                      <input
-                        type="text"
+                      <div className="flex items-start gap-2">
+                      <textarea
                         placeholder="Description"
                         value={m.label}
                         onChange={(e) => updateMilestone(i, "label", e.target.value)}
-                        maxLength={100}
-                        className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        maxLength={500}
+                        rows={1}
+                        className="flex-1 resize-none field-sizing-content rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                       />
                       <input
                         type="text"

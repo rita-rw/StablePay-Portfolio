@@ -42,7 +42,7 @@ export const MetadataBody = z.object({
     .string("Valid metadataHash (bytes32) is required")
     .regex(/^0x[a-fA-F0-9]{64}$/, "Valid metadataHash (bytes32) is required"),
   milestoneLabels: z
-    .array(z.string().max(100, "milestone label must be at most 100 characters"))
+    .array(z.string().max(500, "milestone label must be at most 500 characters"))
     .max(50, "at most 50 milestone labels")
     .optional(),
 });
