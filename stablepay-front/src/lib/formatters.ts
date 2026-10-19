@@ -141,7 +141,7 @@ export function statusBadge(status: string): { label: string; color: string } {
     : status === "SELLER_ACCEPTED" ? "ACCEPTED — AWAITING FUNDING"
     : status === "SELLER_REJECTED" ? "REJECTED"
     : status === "COMPLETED" ? "COMPLETED"
-    : status === "IN_PROGRESS" ? "IN PROGRESS"
+    : status === "IN_PROGRESS" || status === "FUNDED" ? "IN PROGRESS"
     : status;
 
   const color =
@@ -149,10 +149,8 @@ export function statusBadge(status: string): { label: string; color: string } {
       ? "bg-red-50 border border-red-200 text-red-700"
       : status === "COMPLETED"
       ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-      : status === "IN_PROGRESS"
+      : status === "IN_PROGRESS" || status === "FUNDED"
       ? "bg-amber-50 border border-amber-200 text-amber-700"
-      : status === "FUNDED"
-      ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
       : status === "SELLER_ACCEPTED"
       ? "bg-blue-50 border border-blue-200 text-blue-700"
       : status === "CREATED"
