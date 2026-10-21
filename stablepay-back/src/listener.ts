@@ -1267,6 +1267,7 @@ function clearedDisputeData() {
     disputeEscalatedAt: null,
     disputeEscalatedBy: null,
     escalationReason: null,
+    sellerResponse: null,
   };
 }
 
@@ -1278,6 +1279,7 @@ function disputeFieldsAreStale(
     isEscalated: boolean;
     disputeEscalatedAt: Date | null;
     escalationReason: string | null;
+    sellerResponse: string | null;
   },
   disputeOpenedAtTs: number,
 ): boolean {
@@ -1287,7 +1289,8 @@ function disputeFieldsAreStale(
     || dbMilestone.disputeReason != null
     || dbMilestone.isEscalated
     || dbMilestone.disputeEscalatedAt != null
-    || dbMilestone.escalationReason != null;
+    || dbMilestone.escalationReason != null
+    || dbMilestone.sellerResponse != null;
 }
 
 function submittedAtNeedsUpdate(existing: Date | null, chain: Date | null): boolean {

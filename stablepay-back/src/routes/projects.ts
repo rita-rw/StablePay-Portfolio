@@ -7,6 +7,7 @@ import {
   RenameTitleBody,
   DeliveryBody,
   DisputeBody,
+  SellerResponseBody,
 } from "../validators/projectSchemas";
 import {
   seedProject,
@@ -19,6 +20,7 @@ import {
   saveDelivery,
   saveDisputeReason,
   saveEscalationReason,
+  saveSellerResponse,
 } from "../controllers/projectsController";
 
 const router = Router();
@@ -33,5 +35,6 @@ router.get("/:escrowAddress/events", getEvents);
 router.post("/:escrowAddress/milestones/:index/delivery", requireAuth, validate(DeliveryBody), saveDelivery);
 router.post("/:escrowAddress/milestones/:index/dispute", requireAuth, validate(DisputeBody), saveDisputeReason);
 router.post("/:escrowAddress/milestones/:index/escalation-reason", requireAuth, saveEscalationReason);
+router.post("/:escrowAddress/milestones/:index/seller-response", requireAuth, validate(SellerResponseBody), saveSellerResponse);
 
 export default router;

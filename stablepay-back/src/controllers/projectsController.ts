@@ -606,3 +606,51 @@ export async function saveEscalationReason(req: AuthRequest, res: Response): Pro
     res.status(500).json({ error: "Failed to save escalation reason" });
   }
 }
+
+/** Seller's side of a buyer-opened dispute, for the platform. Off-chain only — no tx, no effect on contract timers. */
+export async function saveSellerResponse(req: AuthRequest, res: Response): Promise<void> {
+  const escrowAddress = req.params.escrowAddress as string;
+  const milestoneIndex = parseInt(req.params.index as string, 10);
+  const { sellerResponse } = req.body as { sellerResponse: string };
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(escrowAddress) || isNaN(milestoneIndex)) {
+    res.status(400).json({ error: "Invalid params" });
+    return;
+  }
+
+  const cleanResponse = sanitize(sellerResponse);
+
+  try {
+    const escrow = await findEscrowById(escrowAddress);
+    if (!escrow) {
+      res.status(404).json({ error: "Escrow not found" });
+      return;
+    }
+
+    if (req.signerAddress?.toLowerCase() !== escrow.seller.toLowerCase()) {
+      res.status(403).json({ error: "Only the seller can respond to a dispute" });
+      return;
+    }
+
+    const milestone = await findMilestone(escrowAddress, milestoneIndex);
+    if (!milestone) {
+      res.status(404).json({ error: "Milestone not found" });
+      return;
+    }
+
+    if (milestone.status !== "DISPUTED" || milestone.disputeOpenedBy?.toLowerCase() !== escrow.buyer.toLowerCase()) {
+      res.status(409).json({ error: "Can only respond to an open dispute opened by the buyer" });
+      return;
+    }
+
+    await prisma.milestone.update({
+      where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex } },
+      data: { sellerResponse: cleanResponse || null },
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[API] POST /projects/:escrowAddress/milestones/:index/seller-response failed", err);
+    res.status(500).json({ error: "Failed to save seller response" });
+  }
+}

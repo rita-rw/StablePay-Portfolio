@@ -122,6 +122,7 @@ export default function ProjectDetailPage() {
     disputeOpenedAt?: string | null;
     disputeOpenedBy?: string | null;
     escalationReason?: string | null;
+    sellerResponse?: string | null;
     sellerAward?: string | null;
     paidAt?: string | null;
     autoApproved?: boolean | null;
@@ -230,6 +231,7 @@ export default function ProjectDetailPage() {
           disputeOpenedBy: "disputeOpenedBy" in m ? m.disputeOpenedBy : old.disputeOpenedBy,
           isEscalated: "isEscalated" in m ? m.isEscalated : old.isEscalated,
           escalationReason: "escalationReason" in m ? m.escalationReason : old.escalationReason,
+          sellerResponse: "sellerResponse" in m ? m.sellerResponse : old.sellerResponse,
         };
       });
     });
@@ -385,6 +387,7 @@ export default function ProjectDetailPage() {
         disputeOpenedBy: disputeStillOpen && onChainDisputeOpenedBy !== zeroAddr ? onChainDisputeOpenedBy : null,
         disputeReason: disputeStillOpen ? m.disputeReason : null,
         escalationReason: disputeStillOpen ? m.escalationReason : null,
+        sellerResponse: disputeStillOpen ? m.sellerResponse : null,
       };
     });
   }, [milestones, onChainMilestones, seller]);
@@ -572,6 +575,12 @@ export default function ProjectDetailPage() {
   const [confirmedPaids, setConfirmedPaids] = useState<Set<number>>(new Set());
   const [escalationReasons, setEscalationReasons] = useState<Record<number, string>>({});
   const [escalationExpanded, setEscalationExpanded] = useState<Record<number, boolean>>({});
+  // Seller's off-chain response to a buyer-opened dispute (no tx, saved in the backend only)
+  const [sellerResponseDrafts, setSellerResponseDrafts] = useState<Record<number, string>>({});
+  const [sellerResponseExpanded, setSellerResponseExpanded] = useState<Record<number, boolean>>({});
+  const [savedSellerResponses, setSavedSellerResponses] = useState<Record<number, string>>({});
+  const [sellerResponseSaving, setSellerResponseSaving] = useState<number | null>(null);
+  const [sellerResponseError, setSellerResponseError] = useState<Record<number, string>>({});
   const [disputeExpanded, setDisputeExpanded] = useState<Record<number, boolean>>({});
   // Last submission time we already reset the dispute draft for. A resubmit changes submittedAt.
   const disputeDraftEpoch = useRef<Record<number, string>>({});
@@ -840,6 +849,28 @@ export default function ProjectDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ escalationReason: text }),
       }).catch(() => {});
+    }
+  }
+
+  async function handleSaveSellerResponse(milestoneIndex: number) {
+    const text = (sellerResponseDrafts[milestoneIndex] ?? "").trim();
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!text || !apiUrl || !walletClient) return;
+    setSellerResponseSaving(milestoneIndex);
+    setSellerResponseError((prev) => ({ ...prev, [milestoneIndex]: "" }));
+    try {
+      const res = await authFetch(`${apiUrl}/projects/${escrowAddress}/milestones/${milestoneIndex}/seller-response`, walletClient, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sellerResponse: text }),
+      });
+      if (!res.ok) throw new Error();
+      setSavedSellerResponses((prev) => ({ ...prev, [milestoneIndex]: text }));
+      setSellerResponseExpanded((prev) => ({ ...prev, [milestoneIndex]: false }));
+    } catch {
+      setSellerResponseError((prev) => ({ ...prev, [milestoneIndex]: "Could not save your response. Please try again." }));
+    } finally {
+      setSellerResponseSaving(null);
     }
   }
 
@@ -1878,6 +1909,12 @@ export default function ProjectDetailPage() {
                         <span className="font-medium text-zinc-600">Reason:</span> {disputeReason}
                       </p>
                     )}
+                    {(savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse) && (
+                      <p className="mb-1 whitespace-pre-wrap break-words text-zinc-800">
+                        <span className="font-medium text-zinc-600">Seller&apos;s response:</span>{" "}
+                        {savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse}
+                      </p>
+                    )}
                     {disputeOpenedAt && (
                       <p className="text-zinc-700">
                         <span className="font-medium text-zinc-600">Opened:</span>{" "}
@@ -2143,7 +2180,60 @@ export default function ProjectDetailPage() {
               )}
               {isSeller && displayStatus === "DISPUTED" && !processingMilestones.has(m.milestoneIndex) &&
                 m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase() &&
-                !isDisputeTimeoutReady(m.disputeOpenedAt) && (
+                !isDisputeResubmitWindow(m.disputeOpenedAt) && !isDisputeTimeoutReady(m.disputeOpenedAt) && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-zinc-700">
+                    {correctionWindowMs > 0 && `The ${dayLabel(correctionWindowDays)} correction window has ended, so you can no longer resubmit. `}
+                    The platform will review and resolve this dispute.
+                  </p>
+                  {!sellerResponseExpanded[m.milestoneIndex] ? (
+                    <button
+                      onClick={() => {
+                        setSellerResponseDrafts((prev) => ({ ...prev, [m.milestoneIndex]: savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse ?? "" }));
+                        setSellerResponseExpanded((prev) => ({ ...prev, [m.milestoneIndex]: true }));
+                      }}
+                      className="w-full rounded-lg border border-zinc-400 px-4 py-2 text-sm text-zinc-700 transition-colors hover:bg-zinc-100"
+                    >
+                      {(savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse) ? "Edit your response" : "Respond to the dispute"}
+                    </button>
+                  ) : (
+                    <div className="rounded-lg border border-zinc-400 bg-white p-3 space-y-2">
+                      <p className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">Your response to the platform</p>
+                      <textarea
+                        value={sellerResponseDrafts[m.milestoneIndex] ?? ""}
+                        onChange={(e) => setSellerResponseDrafts((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))}
+                        placeholder="Give your side of the dispute…"
+                        maxLength={500}
+                        rows={3}
+                        className="w-full resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setSellerResponseExpanded((prev) => ({ ...prev, [m.milestoneIndex]: false }))}
+                          className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleSaveSellerResponse(m.milestoneIndex)}
+                          disabled={!sellerResponseDrafts[m.milestoneIndex]?.trim() || sellerResponseSaving === m.milestoneIndex}
+                          className="flex-1 rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-900 disabled:opacity-50"
+                        >
+                          {sellerResponseSaving === m.milestoneIndex ? "Saving..." : "Send to Platform"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-zinc-500">No transaction needed. Your response is shown to the platform and the buyer.</p>
+                  {sellerResponseError[m.milestoneIndex] && (
+                    <p className="text-xs text-red-500">{sellerResponseError[m.milestoneIndex]}</p>
+                  )}
+                </div>
+              )}
+              {/* Escalating only skips the correction window, so it is offered only while that window is open */}
+              {isSeller && displayStatus === "DISPUTED" && !processingMilestones.has(m.milestoneIndex) &&
+                m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase() &&
+                isDisputeResubmitWindow(m.disputeOpenedAt) && (
                 <div className="mt-3">
                   {!escalationExpanded[m.milestoneIndex] ? (
                     <button

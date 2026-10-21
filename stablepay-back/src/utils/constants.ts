@@ -2,6 +2,7 @@ export const MAX_TITLE = 200;
 export const MAX_DESCRIPTION = 2000;
 export const MAX_DELIVERY_REF = 1000;
 export const MAX_DISPUTE_REASON = 2000;
+export const MAX_SELLER_RESPONSE = 500;
 export const MAX_COMPANY_NAME = 200;
 export const MAX_ORG_NUMBER = 20;
 export const MAX_VAT_NUMBER = 30;

@@ -5,6 +5,7 @@ import {
   MAX_DESCRIPTION,
   MAX_DELIVERY_REF,
   MAX_DISPUTE_REASON,
+  MAX_SELLER_RESPONSE,
 } from "../utils/constants";
 
 function zodAddress(message: string) {
@@ -66,4 +67,12 @@ export const DisputeBody = z.object({
     .string("disputeReason is required")
     .min(1, "disputeReason is required")
     .max(MAX_DISPUTE_REASON, `disputeReason must be at most ${MAX_DISPUTE_REASON} characters`),
+});
+
+export const SellerResponseBody = z.object({
+  sellerResponse: z
+    .string("sellerResponse is required")
+    .trim()
+    .min(1, "sellerResponse is required")
+    .max(MAX_SELLER_RESPONSE, `sellerResponse must be at most ${MAX_SELLER_RESPONSE} characters`),
 });

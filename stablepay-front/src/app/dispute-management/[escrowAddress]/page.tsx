@@ -47,7 +47,7 @@ export default function AdminProjectDisputesPage() {
   const [activeResolveId, setActiveResolveId] = useState<string | null>(null);
   const [escrowMeta, setEscrowMeta] = useState<{ title?: string | null; buyer?: string; seller?: string; buyerCompany?: string | null; sellerCompany?: string | null } | null>(null);
   const [correctionWindowDays, setCorrectionWindowDays] = useState<number | null>(null);
-  const [backendMilestones, setBackendMilestones] = useState<Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }>>({});
+  const [backendMilestones, setBackendMilestones] = useState<Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }>>({});
 
   const lastResolveIdRef = useRef<string | null>(null);
 
@@ -63,9 +63,9 @@ export default function AdminProjectDisputesPage() {
           setEscrowMeta({ title: data.title, buyer: data.buyer, seller: data.seller, buyerCompany: data.buyerCompany, sellerCompany: data.sellerCompany });
           setCorrectionWindowDays(data.correctionWindowDays ?? 7);
           if (Array.isArray(data.milestones)) {
-            const map: Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }> = {};
+            const map: Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }> = {};
             for (const m of data.milestones) {
-              map[m.milestoneIndex] = { label: m.label, sellerAward: m.sellerAward, buyerAward: m.buyerAward, paidAt: m.paidAt, deliveryReference: m.deliveryReference, disputeReason: m.disputeReason, escalationReason: m.escalationReason, isEscalated: m.isEscalated, disputeOpenedAt: m.disputeOpenedAt };
+              map[m.milestoneIndex] = { label: m.label, sellerAward: m.sellerAward, buyerAward: m.buyerAward, paidAt: m.paidAt, deliveryReference: m.deliveryReference, disputeReason: m.disputeReason, escalationReason: m.escalationReason, sellerResponse: m.sellerResponse, isEscalated: m.isEscalated, disputeOpenedAt: m.disputeOpenedAt };
             }
             setBackendMilestones(map);
           }
@@ -364,6 +364,12 @@ export default function AdminProjectDisputesPage() {
                     <div className="border-l-2 border-orange-400 bg-orange-50/40 px-4 py-3 rounded-r-md">
                       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-orange-600">Seller escalation reason</p>
                       <p className="text-sm text-zinc-800">{backendMilestones[dispute.milestoneIndex].escalationReason}</p>
+                    </div>
+                  )}
+                  {backendMilestones[dispute.milestoneIndex]?.sellerResponse && (
+                    <div className="border-l-2 border-zinc-500 bg-zinc-50 px-4 py-3 rounded-r-md">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Seller&apos;s response</p>
+                      <p className="whitespace-pre-wrap break-words text-sm text-zinc-800">{backendMilestones[dispute.milestoneIndex].sellerResponse}</p>
                     </div>
                   )}
                 </div>
