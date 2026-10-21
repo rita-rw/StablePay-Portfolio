@@ -876,6 +876,7 @@ export async function startListener() {
             where: { id: escrowAddress },
             data: { status: "CANCELLED", cancelledAt },
           });
+          void sendNotification("PROJECT_CANCELLED", escrowAddress);
         } catch (err) {
           console.error("[listener] EscrowCancelled DB update failed", err);
         }
@@ -966,6 +967,7 @@ export async function startListener() {
               ...clearedDisputeData(),
             },
           });
+          void sendNotification("MILESTONE_RESUBMITTED", escrowAddress);
         } catch (err) {
           console.error("[listener] MilestoneResubmitted DB update failed", err);
         }
@@ -1055,6 +1057,7 @@ export async function startListener() {
             where: { id: escrowAddress },
             data: { status: "SELLER_ACCEPTED" },
           });
+          void sendNotification("PROJECT_ACCEPTED", escrowAddress);
         } catch (err) {
           console.error("[listener] ProjectAccepted DB update failed", err);
         }
@@ -1082,6 +1085,7 @@ export async function startListener() {
             where: { id: escrowAddress },
             data: { status: "SELLER_REJECTED", cancelledAt },
           });
+          void sendNotification("PROJECT_REJECTED", escrowAddress);
         } catch (err) {
           console.error("[listener] ProjectRejected DB update failed", err);
         }
