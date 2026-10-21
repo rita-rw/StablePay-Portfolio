@@ -79,6 +79,7 @@ model Milestone {
   disputeEscalatedBy   String?   @db.VarChar(42)
   escalationReason     String?   @db.VarChar(500)
   sellerResponse       String?   @db.VarChar(500)
+  resolutionNote       String?   @db.VarChar(1000)
 
   escrow Escrow @relation(fields: [escrowAddress], references: [id])
 

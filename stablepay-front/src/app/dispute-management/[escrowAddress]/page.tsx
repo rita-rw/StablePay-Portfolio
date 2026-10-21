@@ -6,7 +6,8 @@ import { useAccount, useReadContract, useReadContracts, useWalletClient, useWrit
 import { formatUnits, parseUnits } from "viem";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminDisputeDetail } from "@/services/admin";
-import { PLATFORM_ADDRESS } from "@/lib/constants";
+import { API_URL, PLATFORM_ADDRESS } from "@/lib/constants";
+import { authFetch } from "@/lib/authFetch";
 import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle } from "@/lib/formatters";
 
 /** Compact "2d 3h" / "3h 10m" / "5m" style remaining-time label. */
@@ -47,9 +48,17 @@ export default function AdminProjectDisputesPage() {
   const [activeResolveId, setActiveResolveId] = useState<string | null>(null);
   const [escrowMeta, setEscrowMeta] = useState<{ title?: string | null; buyer?: string; seller?: string; buyerCompany?: string | null; sellerCompany?: string | null } | null>(null);
   const [correctionWindowDays, setCorrectionWindowDays] = useState<number | null>(null);
-  const [backendMilestones, setBackendMilestones] = useState<Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }>>({});
+  const [backendMilestones, setBackendMilestones] = useState<Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; resolutionNote?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }>>({});
 
   const lastResolveIdRef = useRef<string | null>(null);
+  // Decision note per dispute. Saved after the resolve tx confirms, so a failed or
+  // cancelled tx never leaves a note on an unresolved dispute.
+  const MIN_NOTE_LENGTH = 10;
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [savedNotes, setSavedNotes] = useState<Record<string, string>>({});
+  const [noteSaving, setNoteSaving] = useState<string | null>(null);
+  const [noteErrors, setNoteErrors] = useState<Record<string, string>>({});
+  const pendingNoteRef = useRef<{ id: string; milestoneIndex: number; note: string } | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -63,9 +72,9 @@ export default function AdminProjectDisputesPage() {
           setEscrowMeta({ title: data.title, buyer: data.buyer, seller: data.seller, buyerCompany: data.buyerCompany, sellerCompany: data.sellerCompany });
           setCorrectionWindowDays(data.correctionWindowDays ?? 7);
           if (Array.isArray(data.milestones)) {
-            const map: Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }> = {};
+            const map: Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; resolutionNote?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }> = {};
             for (const m of data.milestones) {
-              map[m.milestoneIndex] = { label: m.label, sellerAward: m.sellerAward, buyerAward: m.buyerAward, paidAt: m.paidAt, deliveryReference: m.deliveryReference, disputeReason: m.disputeReason, escalationReason: m.escalationReason, sellerResponse: m.sellerResponse, isEscalated: m.isEscalated, disputeOpenedAt: m.disputeOpenedAt };
+              map[m.milestoneIndex] = { label: m.label, sellerAward: m.sellerAward, buyerAward: m.buyerAward, paidAt: m.paidAt, deliveryReference: m.deliveryReference, disputeReason: m.disputeReason, escalationReason: m.escalationReason, sellerResponse: m.sellerResponse, resolutionNote: m.resolutionNote, isEscalated: m.isEscalated, disputeOpenedAt: m.disputeOpenedAt };
             }
             setBackendMilestones(map);
           }
@@ -162,6 +171,14 @@ export default function AdminProjectDisputesPage() {
     useWaitForTransactionReceipt({ hash: resolveTxHash, query: { enabled: !!resolveTxHash } });
 
   useEffect(() => {
+    if (!isResolveSuccess || !pendingNoteRef.current) return;
+    const { id, milestoneIndex, note } = pendingNoteRef.current;
+    pendingNoteRef.current = null;
+    void saveResolutionNote(id, milestoneIndex, note);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isResolveSuccess]);
+
+  useEffect(() => {
     if (!isResolveSuccess || !lastResolveIdRef.current) return;
     setResolvedDisputes((prev) => new Set(prev).add(lastResolveIdRef.current!));
     // Poll backend until sellerAward is available
@@ -169,6 +186,25 @@ export default function AdminProjectDisputesPage() {
     const timeout = setTimeout(() => clearInterval(poll), 20000);
     return () => { clearInterval(poll); clearTimeout(timeout); };
   }, [isResolveSuccess, fetchBackendData]);
+
+  async function saveResolutionNote(id: string, milestoneIndex: number, note: string) {
+    if (!walletClient) return;
+    setNoteSaving(id);
+    setNoteErrors((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const res = await authFetch(`${API_URL}/admin/disputes/${escrowAddress}/milestones/${milestoneIndex}/resolution-note`, walletClient, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resolutionNote: note }),
+      });
+      if (!res.ok) throw new Error();
+      setSavedNotes((prev) => ({ ...prev, [id]: note }));
+    } catch {
+      setNoteErrors((prev) => ({ ...prev, [id]: "Could not save the decision note. Please try again." }));
+    } finally {
+      setNoteSaving(null);
+    }
+  }
 
   function handleResolve(dispute: OnChainDispute) {
     const amountBig = BigInt(dispute.amount);
@@ -193,7 +229,11 @@ export default function AdminProjectDisputesPage() {
       return;
     }
 
+    const note = (noteDrafts[dispute.id] ?? "").trim();
+    if (note.length < MIN_NOTE_LENGTH) return;
+
     lastResolveIdRef.current = dispute.id;
+    pendingNoteRef.current = { id: dispute.id, milestoneIndex: dispute.milestoneIndex, note };
     setActiveResolveId(dispute.id);
     setOptimisticAwards((prev) => ({ ...prev, [dispute.id]: grossBig.toString() }));
     writeResolve({
@@ -420,6 +460,42 @@ export default function AdminProjectDisputesPage() {
                     })()}
                   </div>
                 )}
+                {isResolved && (() => {
+                  const note = savedNotes[dispute.id] ?? backendMilestones[dispute.milestoneIndex]?.resolutionNote;
+                  if (note) {
+                    return (
+                      <div className="mt-2 border-l-2 border-blue-500 bg-zinc-50 px-4 py-3 rounded-r-md">
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-blue-600">Decision note</p>
+                        <p className="whitespace-pre-wrap break-words text-sm text-zinc-800">{note}</p>
+                      </div>
+                    );
+                  }
+                  // Missing note: the save after the tx failed, or the dispute was resolved before notes existed
+                  const draft = (noteDrafts[dispute.id] ?? "").trim();
+                  return (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Decision note</p>
+                      <textarea
+                        value={noteDrafts[dispute.id] ?? ""}
+                        onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [dispute.id]: e.target.value }))}
+                        placeholder="Explain the decision to the buyer and the seller…"
+                        maxLength={1000}
+                        rows={3}
+                        className="w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                      />
+                      <button
+                        onClick={() => saveResolutionNote(dispute.id, dispute.milestoneIndex, draft)}
+                        disabled={draft.length < MIN_NOTE_LENGTH || noteSaving === dispute.id}
+                        className="w-full rounded-lg bg-zinc-800 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-900 disabled:opacity-40"
+                      >
+                        {noteSaving === dispute.id ? "Saving..." : "Save decision note"}
+                      </button>
+                      {noteErrors[dispute.id] && (
+                        <p className="text-xs text-red-500">{noteErrors[dispute.id]}</p>
+                      )}
+                    </div>
+                  );
+                })()}
                 {!isResolved && (() => {
                   const amountBig = BigInt(dispute.amount);
                   const disputeFeeBig = (amountBig * 100n) / 10000n;
@@ -452,8 +528,10 @@ export default function AdminProjectDisputesPage() {
                     }
                   }
 
+                  const noteLength = (noteDrafts[dispute.id] ?? "").trim().length;
                   const canSubmit =
                     canResolve &&
+                    noteLength >= MIN_NOTE_LENGTH &&
                     (mode === "all-seller" || mode === "all-buyer" || (mode === "custom" && customInput !== "" && !customInputError));
 
                   return (
@@ -551,6 +629,23 @@ export default function AdminProjectDisputesPage() {
                         <p className="text-xs text-red-500">Amount must be between 0 and {formatUnits(allToSellerNet, 6)} USDC</p>
                       )}
 
+                      {/* Decision note — required, shown to both parties */}
+                      <div className={`space-y-1 ${!canResolve ? "opacity-40" : ""}`}>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Decision note</p>
+                        <textarea
+                          value={noteDrafts[dispute.id] ?? ""}
+                          onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [dispute.id]: e.target.value }))}
+                          disabled={!canResolve}
+                          placeholder="Explain the decision to the buyer and the seller…"
+                          maxLength={1000}
+                          rows={3}
+                          className="w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                        <p className="text-xs text-zinc-500">
+                          Required, at least {MIN_NOTE_LENGTH} characters. Shown to the buyer and the seller, and cannot be changed later.
+                        </p>
+                      </div>
+
                       {/* Resolve button */}
                       <button
                         onClick={() => handleResolve(dispute)}
@@ -563,6 +658,9 @@ export default function AdminProjectDisputesPage() {
 
                       {resolveError && isResolvingThis && (
                         <p className="text-xs text-red-500">{parseContractError(resolveError)}</p>
+                      )}
+                      {noteErrors[dispute.id] && (
+                        <p className="text-xs text-red-500">{noteErrors[dispute.id]}</p>
                       )}
                     </div>
                   );

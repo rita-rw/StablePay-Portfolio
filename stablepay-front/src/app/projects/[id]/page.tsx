@@ -123,6 +123,7 @@ export default function ProjectDetailPage() {
     disputeOpenedBy?: string | null;
     escalationReason?: string | null;
     sellerResponse?: string | null;
+    resolutionNote?: string | null;
     sellerAward?: string | null;
     paidAt?: string | null;
     autoApproved?: boolean | null;
@@ -232,6 +233,7 @@ export default function ProjectDetailPage() {
           isEscalated: "isEscalated" in m ? m.isEscalated : old.isEscalated,
           escalationReason: "escalationReason" in m ? m.escalationReason : old.escalationReason,
           sellerResponse: "sellerResponse" in m ? m.sellerResponse : old.sellerResponse,
+          resolutionNote: "resolutionNote" in m ? m.resolutionNote : old.resolutionNote,
         };
       });
     });
@@ -1925,6 +1927,11 @@ export default function ProjectDetailPage() {
                       <p className="mt-1 text-zinc-700">
                         <span className="font-medium text-zinc-600">Settled:</span>{" "}
                         {new Date(m.paidAt).toLocaleDateString()}
+                      </p>
+                    )}
+                    {isDisputeOutcome && m.resolutionNote && (
+                      <p className="mt-1 whitespace-pre-wrap break-words text-zinc-800">
+                        <span className="font-medium text-zinc-600">Decision by StablePay:</span> {m.resolutionNote}
                       </p>
                     )}
                   </div>

@@ -6,6 +6,8 @@ import {
   MAX_DELIVERY_REF,
   MAX_DISPUTE_REASON,
   MAX_SELLER_RESPONSE,
+  MIN_RESOLUTION_NOTE,
+  MAX_RESOLUTION_NOTE,
 } from "../utils/constants";
 
 function zodAddress(message: string) {
@@ -75,4 +77,12 @@ export const SellerResponseBody = z.object({
     .trim()
     .min(1, "sellerResponse is required")
     .max(MAX_SELLER_RESPONSE, `sellerResponse must be at most ${MAX_SELLER_RESPONSE} characters`),
+});
+
+export const ResolutionNoteBody = z.object({
+  resolutionNote: z
+    .string("resolutionNote is required")
+    .trim()
+    .min(MIN_RESOLUTION_NOTE, `resolutionNote must be at least ${MIN_RESOLUTION_NOTE} characters`)
+    .max(MAX_RESOLUTION_NOTE, `resolutionNote must be at most ${MAX_RESOLUTION_NOTE} characters`),
 });

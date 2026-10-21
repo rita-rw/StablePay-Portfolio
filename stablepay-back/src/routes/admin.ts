@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { requireAuth, requirePlatform } from "../auth";
 import { validate } from "../middleware/validate";
-import { getAdminProjects, getAdminDisputes, getAdminDisputeDetail } from "../controllers/adminController";
+import { getAdminProjects, getAdminDisputes, getAdminDisputeDetail, saveResolutionNote } from "../controllers/adminController";
+import { ResolutionNoteBody } from "../validators/projectSchemas";
 import {
   getFactorySettings,
   updatePlatformFee,
@@ -25,6 +26,7 @@ const router = Router();
 router.get("/projects", requireAuth, requirePlatform, getAdminProjects);
 router.get("/disputes", requireAuth, requirePlatform, getAdminDisputes);
 router.get("/disputes/:escrowAddress", requireAuth, requirePlatform, getAdminDisputeDetail);
+router.post("/disputes/:escrowAddress/milestones/:index/resolution-note", requireAuth, requirePlatform, validate(ResolutionNoteBody), saveResolutionNote);
 
 router.get("/settings", requireAuth, requirePlatform, getFactorySettings);
 router.post("/settings/fee", requireAuth, requirePlatform, validate(SetFeeBpsBody), updatePlatformFee);

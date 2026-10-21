@@ -44,6 +44,7 @@ export const participantMilestoneSelect = {
   disputeEscalatedAt: true,
   disputeEscalatedBy: true,
   sellerResponse: true,
+  resolutionNote: true,
 } satisfies Prisma.MilestoneSelect;
 
 export const escrowDetailFields = {
