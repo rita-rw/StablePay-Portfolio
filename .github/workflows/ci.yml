@@ -17,7 +17,7 @@ jobs:
     env:
       FOUNDRY_PROFILE: ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -39,9 +39,9 @@ jobs:
       run:
         working-directory: stablepay-back
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: stablepay-back/.nvmrc
           cache: npm
@@ -59,9 +59,9 @@ jobs:
       run:
         working-directory: stablepay-front
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
