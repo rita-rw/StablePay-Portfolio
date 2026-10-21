@@ -58,6 +58,12 @@ curl -L https://foundry.paradigm.xyz | bash
 foundryup
 ```
 
+The libraries (forge-std, OpenZeppelin) are git submodules under `lib/`. Clone with `--recurse-submodules`, or fetch them in an existing clone:
+
+```bash
+git submodule update --init --recursive
+```
+
 ```bash
 forge test        # 109 tests across 13 test contracts
 forge test -vvv   # verbose output

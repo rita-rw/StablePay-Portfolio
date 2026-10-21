@@ -1,5 +1,7 @@
 # StablePay
 
+[![CI](https://github.com/rita-rw/StablePay-Portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/rita-rw/StablePay-Portfolio/actions/workflows/ci.yml)
+
 A milestone-based escrow platform built on Base, a Layer-2 Ethereum blockchain. Clients and freelancers agree on project milestones upfront — funds are locked in a smart contract and released only when each milestone is approved. Disputes are resolved by the platform, with built-in timeouts and protection mechanisms for both parties.
 
 Started as a team internship project; actively developed and maintained solo since then — see [`PROJECT_HISTORY.md`](PROJECT_HISTORY.md) for what that's involved.
@@ -99,7 +101,7 @@ npm install
 npm run dev                 # http://localhost:3000
 ```
 
-The smart contracts are already deployed to Base Sepolia (addresses above) — the backend and frontend point at them directly, no deployment needed to run the app locally. To work on the contracts themselves (`forge test`, `forge build`), see [`stablepay-smart/README.md`](stablepay-smart/README.md).
+The smart contracts are already deployed to Base Sepolia (addresses above) — the backend and frontend point at them directly, no deployment needed to run the app locally. To work on the contracts themselves (`forge test`, `forge build`), clone with `git clone --recurse-submodules` (the contract libraries are git submodules) and see [`stablepay-smart/README.md`](stablepay-smart/README.md).
 
 Full environment variable lists and per-service details: [`stablepay-back/README.md`](stablepay-back/README.md) · [`stablepay-front/README.md`](stablepay-front/README.md) · [`stablepay-smart/README.md`](stablepay-smart/README.md)
 
