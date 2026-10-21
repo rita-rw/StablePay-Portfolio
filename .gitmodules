@@ -1,0 +1,6 @@
+[submodule "stablepay-smart/lib/forge-std"]
+	path = stablepay-smart/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "stablepay-smart/lib/openzeppelin-contracts"]
+	path = stablepay-smart/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
