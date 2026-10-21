@@ -9,7 +9,7 @@ Express + TypeScript backend for StablePay. Acts as a database mirror of on-chai
 - Listens to 14 on-chain events in real time and syncs them to the database
 - Exposes a REST API for the frontend (projects, users, milestones, events)
 - Authenticates write operations by verifying wallet signatures server-side
-- Sends email notifications on key events (new project, dispute opened, etc.)
+- Sends optional email notifications on key events (new project, seller accepted, dispute opened, etc.)
 - Exposes `/health` and `/ready` endpoints so the listener's status can be monitored — used by Railway to detect and auto-restart a broken listener
 
 ## Tech Stack
@@ -52,6 +52,16 @@ PORT=
 PLATFORM_ADDRESS=
 PRIVATE_KEY=
 ALLOWED_ORIGINS=
+
+# Optional — email notifications (see below)
+SMTP_HOST=
+SMTP_PORT=
+SMTP_SECURE=
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
+ADMIN_EMAIL=
+FRONTEND_URL=
 ```
 
 ## Run locally
@@ -69,3 +79,11 @@ npm run dev                 # http://localhost:3001
 ```
 
 `PLATFORM_ADDRESS` and `PRIVATE_KEY` belong to the platform admin wallet — leave them blank to try the app. Buyer/seller flows (create, fund, submit, approve) work fully without them, since those transactions are signed by each user's own wallet in the browser. Only the `/admin` routes (dispute resolution, platform settings) require them.
+
+### Email notifications (optional)
+
+Off by default — if `SMTP_HOST`, `SMTP_USER` or `SMTP_PASS` is missing, no email is sent and everything else works as normal. To turn it on, fill in the `SMTP_*` block in `.env` (commented out in `.env.example`) and restart the backend.
+
+Emails go to the email address each wallet registered with: the seller hears about new, funded, cancelled and approved projects; the buyer hears when the seller accepts, declines or submits work; disputes go to both parties and to `ADMIN_EMAIL`.
+
+With Gmail, use an [App Password](https://myaccount.google.com/apppasswords), not your normal password. Leave email off on a public demo — anyone can register any address, so the server would send mail to strangers.

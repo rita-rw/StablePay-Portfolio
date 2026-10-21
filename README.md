@@ -46,7 +46,7 @@ The smart contracts are the source of truth. The backend listens to 14 on-chain 
 - **Dispute resolution** — platform can split a milestone between buyer and seller
 - **Correction window** — buyer-opened disputes give the seller a window to resubmit before escalation
 - **Dispute timeout** — either party can trigger a full buyer refund after 30 days of inactivity
-- **Email notifications** — sent on key events (new project, dispute opened, milestone approved, etc.)
+- **Email notifications (optional)** — sent on key events (new project, seller accepted, dispute opened, milestone approved, etc.) when SMTP is configured
 - **Role-based UI** — separate views for buyers, sellers, and platform admins
 
 ---
