@@ -68,7 +68,8 @@ model Milestone {
   deliveryReference String?         @db.VarChar(1000)
   submittedAt       DateTime?
   paidAt            DateTime?
-  disputeReason     String?   @db.VarChar(2000)
+  autoApproved      Boolean? // null = unknown (paid before this field existed, or synced without the event)
+  disputeReason    String?   @db.VarChar(2000)
   disputeOpenedAt   DateTime?
   disputeOpenedBy   String?   @db.VarChar(42)
   isEscalated          Boolean   @default(false)

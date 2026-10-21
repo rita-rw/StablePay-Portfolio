@@ -124,6 +124,7 @@ export default function ProjectDetailPage() {
     escalationReason?: string | null;
     sellerAward?: string | null;
     paidAt?: string | null;
+    autoApproved?: boolean | null;
   }[]>([]);
   const [events, setEvents] = useState<ProjectEvent[]>([]);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -1934,7 +1935,13 @@ export default function ProjectDetailPage() {
                     {displayStatus === "PAID" && !hadDispute && (locallyPaid || !processingMilestones.has(m.milestoneIndex)) && (
                       <div className="mt-3 border-l-2 border-blue-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md">
                         <p className="font-semibold text-zinc-500 uppercase tracking-wider text-[10px] mb-1">Approval</p>
-                        <p className="text-zinc-800">Payment released to the seller.</p>
+                        <p className="text-zinc-800">
+                          {m.autoApproved === true
+                            ? "Auto-approved. The seller claimed the payment after the approval window ended."
+                            : m.autoApproved === false
+                              ? "Approved by the buyer. Payment released to the seller."
+                              : "Payment released to the seller."}
+                        </p>
                       </div>
                     )}
                     {["PAID", "REFUNDED", "RESOLVED"].includes(displayStatus) && paymentBreakdown}

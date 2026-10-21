@@ -34,6 +34,7 @@ export const participantMilestoneSelect = {
   deliveryReference: true,
   submittedAt: true,
   paidAt: true,
+  autoApproved: true,
   disputeReason: true,
   disputeOpenedAt: true,
   disputeOpenedBy: true,

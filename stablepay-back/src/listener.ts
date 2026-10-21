@@ -821,7 +821,7 @@ export async function startListener() {
           const approvedDate = await blockDate(client, log.blockNumber);
           await prisma.milestone.update({
             where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: { status: "PAID", paidAt: approvedDate },
+            data: { status: "PAID", paidAt: approvedDate, autoApproved: false },
           });
           void sendNotification("MILESTONE_APPROVED", escrowAddress);
         } catch (err) {
@@ -849,7 +849,7 @@ export async function startListener() {
           const autoApprovedDate = await blockDate(client, log.blockNumber);
           await prisma.milestone.update({
             where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: { status: "PAID", paidAt: autoApprovedDate },
+            data: { status: "PAID", paidAt: autoApprovedDate, autoApproved: true },
           });
           void sendNotification("MILESTONE_APPROVED", escrowAddress);
         } catch (err) {
