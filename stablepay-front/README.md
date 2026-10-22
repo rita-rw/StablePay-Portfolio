@@ -43,11 +43,13 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=""
 NEXT_PUBLIC_USDC_ADDRESS=""
 NEXT_PUBLIC_PLATFORM_ADDRESS=""
 NEXT_PUBLIC_BASESCAN_URL=""
+NEXT_PUBLIC_RPC_URL=""
 ```
 `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is required — the app fails to start without it (free at [cloud.reown.com](https://cloud.reown.com/)). 
 
-`NEXT_PUBLIC_PLATFORM_ADDRESS` is optional — leave it blank to try the app; only `/admin` routes need it. 
-`NEXT_PUBLIC_BASESCAN_URL` is optional — used for "View on Basescan" links; defaults to `https://sepolia.basescan.org` if left unset.
+`NEXT_PUBLIC_PLATFORM_ADDRESS` is optional — leave it blank to try the app; only `/admin` routes need it.  
+`NEXT_PUBLIC_BASESCAN_URL` is optional — used for "View on Basescan" links; defaults to `https://sepolia.basescan.org` if left unset.  
+`NEXT_PUBLIC_RPC_URL` is optional — your own Alchemy Base Sepolia URL; falls back to the public `sepolia.base.org` RPC if left blank.
 
 ## Run locally
 
