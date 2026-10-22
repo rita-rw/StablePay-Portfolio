@@ -1480,15 +1480,15 @@ contract SellerAcceptanceTest is Test {
     ERC20Mock public token;
 
     address public platform = address(1);
-    address public buyer   = address(2);
-    address public seller  = address(3);
-    address public other   = address(4);
+    address public buyer = address(2);
+    address public seller = address(3);
+    address public other = address(4);
 
     uint256 constant AMOUNT = 1000 ether;
 
     function setUp() public {
         factory = new EscrowFactory(platform);
-        token   = new ERC20Mock();
+        token = new ERC20Mock();
 
         vm.prank(platform);
         factory.approveToken(address(token));
@@ -1661,14 +1661,14 @@ contract SellerEscalateTest is Test {
     ERC20Mock public token;
 
     address public platform = address(1);
-    address public buyer    = address(2);
-    address public seller   = address(3);
+    address public buyer = address(2);
+    address public seller = address(3);
 
     uint256 constant AMOUNT = 1000 ether;
 
     function setUp() public {
         factory = new EscrowFactory(platform);
-        token   = new ERC20Mock();
+        token = new ERC20Mock();
 
         vm.startPrank(platform);
         factory.approveToken(address(token));
@@ -1823,12 +1823,12 @@ contract CorrectionWindowFactoryTest is Test {
     ERC20Mock public token;
 
     address public platform = address(1);
-    address public buyer    = address(2);
-    address public seller   = address(3);
+    address public buyer = address(2);
+    address public seller = address(3);
 
     function setUp() public {
         factory = new EscrowFactory(platform);
-        token   = new ERC20Mock();
+        token = new ERC20Mock();
 
         vm.prank(platform);
         factory.approveToken(address(token));
