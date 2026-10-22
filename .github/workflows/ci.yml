@@ -72,6 +72,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       # RainbowKit refuses to build with an empty WalletConnect project ID,
       # so CI uses the example env with a placeholder ID.
       - name: Create .env for the build
