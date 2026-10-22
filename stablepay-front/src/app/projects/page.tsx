@@ -13,6 +13,8 @@ import type { Escrow } from "@/types/escrow";
 
 type Tab = "active" | "completed" | "all";
 const ITEMS_PER_PAGE = 6;
+const ACTIVE_STATUSES = ["CREATED", "SELLER_ACCEPTED", "FUNDED", "IN_PROGRESS"];
+const COMPLETED_STATUSES = ["COMPLETED", "CANCELLED", "SELLER_REJECTED"];
 
 function tabFromSearch(value: string | null): Tab {
   if (value === "closed" || value === "completed") return "completed";
@@ -159,10 +161,6 @@ function ProjectsList() {
     if (!isClosed) return `Created ${created}`;
     return `Created ${created} · Closed ${formatCardDate(completionSortTime(escrow))}`;
   }
-
-  // Filter by tab
-  const ACTIVE_STATUSES = ["CREATED", "SELLER_ACCEPTED", "FUNDED", "IN_PROGRESS"];
-  const COMPLETED_STATUSES = ["COMPLETED", "CANCELLED", "SELLER_REJECTED"];
 
   const filtered = useMemo(() => {
     let list = enrichedEscrows;
