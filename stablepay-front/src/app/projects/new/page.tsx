@@ -107,10 +107,6 @@ export default function CreateProjectPage() {
 
     if (!args) return;
 
-    const amounts = milestones
-      .filter((m) => parseFloat(m.amount) > 0)
-      .map((m) => parseUnits(m.amount, 6).toString());
-
     if (walletClient) {
       seedProject(walletClient, {
         escrowAddress: args.escrow,
@@ -120,7 +116,7 @@ export default function CreateProjectPage() {
         txHash: receipt.transactionHash,
       }).catch(() => {}); // listener is the fallback if this fails
     }
-  }, [receipt, isSuccess]);
+  }, [receipt, isSuccess, title, description, walletClient]);
 
   const PLATFORM_FEE_BPS = 250n;
 
