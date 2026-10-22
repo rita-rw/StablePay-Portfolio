@@ -1,10 +1,11 @@
 import { verifyMessage, getAddress, isAddress } from "viem";
+import { baseSepolia } from "viem/chains";
 import type { Request, Response, NextFunction } from "express";
 
 // Message must be no older than 4 minutes to prevent replay attacks
 const MAX_AGE_MS = 4 * 60 * 1000;
 
-const EXPECTED_CHAIN_ID = "84532"; // Base Sepolia
+const EXPECTED_CHAIN_ID = String(baseSepolia.id);
 
 export interface AuthRequest extends Request {
   signerAddress?: string;

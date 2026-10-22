@@ -1,4 +1,5 @@
 import type { WalletClient } from "viem";
+import { baseSepolia } from "wagmi/chains";
 
 // Cache signature in memory — backend accepts signatures up to 4 min old,
 // so we use 3 min TTL to keep a safety margin.
@@ -25,7 +26,7 @@ async function ensureAuth(walletClient: WalletClient): Promise<void> {
 
   pendingSign = (async () => {
     const ts = Date.now();
-    const message = `StablePay auth | chain:84532 | address:${address} | ts:${ts}`;
+    const message = `StablePay auth | chain:${baseSepolia.id} | address:${address} | ts:${ts}`;
     const signature = await walletClient.signMessage({ account: walletClient.account!, message });
     // expiresAt is based on the message's own ts (what the backend checks against),
     // not on when signing finished — otherwise a slow MetaMask confirm makes the
