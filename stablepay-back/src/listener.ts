@@ -21,7 +21,7 @@ import {
   projectRejectedEvent,
   disputeEscalatedEvent,
 } from "./abi/events";
-import { milestoneLabelAt, parseMilestoneLabels, seedEscrow } from "./services/escrowService";
+import { milestoneLabelAt, parseMilestoneLabels } from "./services/escrowService";
 
 const MILESTONE_STATUS_MAP: Record<number, MilestoneStatus> = {
   0: MilestoneStatus.PENDING,
@@ -486,21 +486,6 @@ async function seedEscrowFromCreationLog(
   }
 }
 
-async function findEscrowCreatedLog(
-  factoryAddress: `0x${string}`,
-  escrowAddress: `0x${string}`,
-) {
-  const logs = await backfillClient.getLogs({
-    address: factoryAddress,
-    event: escrowCreatedEvent,
-    args: { escrow: escrowAddress },
-    fromBlock: FACTORY_DEPLOY_BLOCK,
-    toBlock: "latest",
-  });
-
-  return logs.at(-1) ?? null;
-}
-
 async function seedMissingEscrowFromChain(
   factoryAddress: `0x${string}`,
   escrowAddress: `0x${string}`,
@@ -517,92 +502,41 @@ async function seedMissingEscrowFromChain(
     return false;
   }
 
-  const creationLog = await findEscrowCreatedLog(factoryAddress, escrowAddress);
-  if (creationLog?.args) {
-    await seedEscrowFromCreationLog(
-      { args: creationLog.args as EscrowCreatedArgs, transactionHash: creationLog.transactionHash },
-      {
-        claimMetadata: false,
-        notify: false,
-        context: "self-heal",
-        milestoneReadClient: backfillClient,
-      },
-    );
-    console.log(`[sync] self-seeded missing escrow from EscrowCreated log: ${escrowAddress}`);
-    return true;
-  }
-
-  const [buyer, seller, token, totalAmount, milestoneCount] = await Promise.all([
+  // Read the same fields the EscrowCreated event carries straight from the
+  // contract — the event itself would need eth_getLogs over the factory's whole
+  // history, which the public RPC no longer allows (200-block cap).
+  const [buyer, seller, token, totalAmount, milestoneCount, metadataHash] = await Promise.all([
     backfillClient.readContract({ address: escrowAddress, abi: escrowReadAbi, functionName: "BUYER" }),
     backfillClient.readContract({ address: escrowAddress, abi: escrowReadAbi, functionName: "SELLER" }),
     backfillClient.readContract({ address: escrowAddress, abi: escrowReadAbi, functionName: "TOKEN" }),
     backfillClient.readContract({ address: escrowAddress, abi: escrowReadAbi, functionName: "totalAmount" }),
     backfillClient.readContract({ address: escrowAddress, abi: escrowReadAbi, functionName: "milestoneCount" }),
+    backfillClient.readContract({ address: escrowAddress, abi: escrowReadAbi, functionName: "METADATA_HASH" }),
   ]);
 
-  const count = Number(milestoneCount);
-  const milestoneResults = await Promise.all(
-    Array.from({ length: count }, (_, index) =>
-      backfillClient.readContract({
-        address: escrowAddress,
-        abi: escrowReadAbi,
-        functionName: "milestones",
-        args: [BigInt(index)],
-      })
-    ),
-  );
-
-  await seedEscrow({
-    escrowAddress,
-    buyer: getAddress(buyer as string),
-    seller: getAddress(seller as string),
-    token: getAddress(token as string),
-    totalAmount: (totalAmount as bigint).toString(),
-    milestoneCount: count,
-    metadataHash: null,
-    title: null,
-    description: null,
-    txHash: null,
-    milestoneAmounts: milestoneResults.map((result) => result[0].toString()),
-  });
-
-  knownEscrows.add(escrowAddress.toLowerCase());
-  console.log(`[sync] self-seeded missing escrow from direct chain reads: ${escrowAddress}`);
-  return true;
-}
-
-async function sweepEscrowCreatedGap(
-  factoryAddress: `0x${string}`,
-  fromBlock: bigint,
-  startToken: number,
-) {
-  console.log(`[listener] sweeping EscrowCreated gap from block ${fromBlock.toString()}`);
-
-  const logs = await backfillClient.getLogs({
-    address: factoryAddress,
-    event: escrowCreatedEvent,
-    fromBlock,
-    toBlock: "latest",
-  });
-
-  console.log(`[listener] EscrowCreated gap sweep found ${logs.length} logs`);
-
-  for (const log of logs) {
-    if (shouldAbortStartup(startToken)) {
-      console.warn("[listener] startup gap sweep aborted by restart request");
-      return;
-    }
-
-    await seedEscrowFromCreationLog(
-      { args: log.args as EscrowCreatedArgs, transactionHash: log.transactionHash },
-      {
-        claimMetadata: false,
-        notify: false,
-        context: "gap-sweep",
-        milestoneReadClient: backfillClient,
+  await seedEscrowFromCreationLog(
+    {
+      args: {
+        escrow: escrowAddress,
+        buyer: getAddress(buyer as string),
+        seller: getAddress(seller as string),
+        token: getAddress(token as string),
+        totalAmount: totalAmount as bigint,
+        milestoneCount: milestoneCount as bigint,
+        metadataHash: metadataHash as `0x${string}`,
       },
-    );
-  }
+      // The creation tx hash only exists in the event; the receipt page hides the link without it.
+      transactionHash: null,
+    },
+    {
+      claimMetadata: false,
+      notify: false,
+      context: "self-heal",
+      milestoneReadClient: backfillClient,
+    },
+  );
+  console.log(`[sync] seeded escrow from direct chain reads: ${escrowAddress}`);
+  return true;
 }
 
 export async function startListener() {
@@ -628,10 +562,6 @@ export async function startListener() {
 
     try {
       await loadKnownEscrowsFromDb();
-
-      if (shouldAbortStartup(startToken)) return;
-
-      const startupBlock = await backfillClient.getBlockNumber();
 
       if (shouldAbortStartup(startToken)) return;
 
@@ -1148,9 +1078,6 @@ export async function startListener() {
       await repairMissingCancelledAt(startToken);
       if (shouldAbortStartup(startToken)) return;
 
-      await sweepEscrowCreatedGap(factoryAddress, startupBlock, startToken);
-      if (shouldAbortStartup(startToken)) return;
-
       listenerLifecycleState = "ready";
       listenerStartupComplete = true;
       listenerReason = null;
@@ -1172,79 +1099,43 @@ export async function startListener() {
 }
 
 /**
- * Fetch all historical EscrowCreated events from the factory contract and seed the DB.
- * Always runs on startup to catch any escrows missed while the backend was down.
+ * Seed every escrow the factory knows about that isn't in the DB yet.
+ * Reads the list straight from the factory instead of scanning EscrowCreated
+ * logs — the public RPC caps eth_getLogs at 200 blocks, and the factory's
+ * history is millions of blocks long. Runs after the watchers start, so any
+ * escrow created later is picked up by the EscrowCreated watcher instead.
  */
 async function backfillFromHistory(factoryAddress: `0x${string}`, startToken: number) {
-  console.log("[backfill] Fetching historical EscrowCreated events...");
+  console.log("[backfill] Reading escrow list from factory...");
 
   try {
-    const latestBlock = await backfillClient.getBlockNumber();
+    const allEscrows = await withRateLimitRetry(
+      () => backfillClient.readContract({ address: factoryAddress, abi: factoryReadAbi, functionName: "getAllEscrows" }),
+      "backfill getAllEscrows",
+    );
+    // Already-known escrows are resynced by catchUpOnChainState() right after this.
+    const missing = allEscrows.filter((address) => !knownEscrows.has(address.toLowerCase()));
+    console.log(`[backfill] factory has ${allEscrows.length} escrows, ${missing.length} missing from DB`);
 
-    const allLogs = [];
-    for (let start = FACTORY_DEPLOY_BLOCK; start <= latestBlock; start += LOG_CHUNK_SIZE) {
+    for (const escrowAddress of missing) {
       if (shouldAbortStartup(startToken)) {
         console.warn("[backfill] aborted by restart request");
         return;
       }
-
-      const end = start + LOG_CHUNK_SIZE - 1n < latestBlock ? start + LOG_CHUNK_SIZE - 1n : latestBlock;
-      // Without the retry a single 429 would throw all the way out to the catch
-      // below, skipping the rest of the chunks and seeding nothing that run.
-      const chunk = await withRateLimitRetry(
-        () =>
-          backfillClient.getLogs({
-            address: factoryAddress,
-            event: escrowCreatedEvent,
-            fromBlock: start,
-            toBlock: end,
-          }),
-        `backfill ${start}-${end}`,
-      );
-      allLogs.push(...chunk);
-    }
-
-    const logs = allLogs;
-    console.log(`[backfill] found ${logs.length} historical EscrowCreated events`);
-
-    let skipped = 0;
-
-    for (const log of logs) {
-      if (shouldAbortStartup(startToken)) {
-        console.warn("[backfill] aborted by restart request");
-        return;
+      // One failing escrow must not stop the rest from being seeded.
+      try {
+        await withRateLimitRetry(
+          () => seedMissingEscrowFromChain(factoryAddress, escrowAddress),
+          `backfill ${escrowAddress}`,
+        );
+      } catch (err) {
+        console.error(`[backfill] failed to seed ${escrowAddress}`, err);
       }
-
-      const escrowAddress = (log.args as EscrowCreatedArgs).escrow;
-
-      // Already in the DB — catchUpOnChainState() resyncs it right after this
-      // function returns, so re-seeding here (with its per-milestone RPC reads)
-      // would just repeat work on every restart for no benefit.
-      if (knownEscrows.has(escrowAddress.toLowerCase())) {
-        skipped++;
-        continue;
-      }
-
-      await seedEscrowFromCreationLog(
-        { args: log.args as EscrowCreatedArgs, transactionHash: log.transactionHash },
-        {
-          claimMetadata: false,
-          notify: false,
-          context: "backfill",
-          milestoneReadClient: backfillClient,
-        },
-      );
-
-      console.log(`[backfill] seeded ${escrowAddress}`);
-    }
-
-    if (skipped > 0) {
-      console.log(`[backfill] skipped ${skipped} already-known escrows (resynced by catch-up instead)`);
     }
 
     console.log("[backfill] done");
   } catch (err) {
-    console.error("[backfill] failed to fetch historical events", err);
+    console.error("[backfill] failed to read escrow list", err);
   }
 }
 

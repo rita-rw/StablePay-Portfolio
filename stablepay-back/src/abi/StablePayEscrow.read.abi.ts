@@ -9,6 +9,7 @@ export const escrowReadAbi = [
   { type: "function", name: "funded", inputs: [], outputs: [{ type: "bool" }], stateMutability: "view" },
   { type: "function", name: "cancelled", inputs: [], outputs: [{ type: "bool" }], stateMutability: "view" },
   { type: "function", name: "milestoneCount", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "METADATA_HASH", inputs: [], outputs: [{ type: "bytes32" }], stateMutability: "view" },
   { type: "function", name: "CORRECTION_WINDOW_DAYS", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "AUTO_APPROVAL_DAYS", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "DISPUTE_TIMEOUT_DAYS", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
