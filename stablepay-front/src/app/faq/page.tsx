@@ -85,7 +85,7 @@ export default function FaqPage() {
           <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-4">FAQ</p>
           <h1 className="text-4xl lg:text-5xl font-bold tracking-tight text-zinc-900">Common questions.</h1>
           <p className="mt-4 text-zinc-500 text-sm leading-relaxed max-w-lg">
-            Everything you need to know about StablePay. Can't find the answer? Reach out to us directly.
+            Everything you need to know about StablePay. Can&apos;t find the answer? Reach out to us directly.
           </p>
         </div>
 
