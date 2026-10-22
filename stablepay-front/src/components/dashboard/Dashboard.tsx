@@ -98,9 +98,15 @@ export default function Dashboard() {
 
   const chainKeyForEscrows = chainKey(escrows);
   const chainData = onChainData ?? (chainCache?.key === chainKeyForEscrows ? chainCache.data : undefined);
-  if (onChainData && escrows.length > 0) {
-    chainCache = { key: chainKeyForEscrows, data: onChainData };
-  }
+
+   // Save the latest on-chain reads so the dashboard can show them instantly
+  // next time. Done in an effect, not during render, because render must not
+  // change anything outside the component.
+  useEffect(() => {
+    if (onChainData && escrows.length > 0) {
+      chainCache = { key: chainKeyForEscrows, data: onChainData };
+    }
+  }, [onChainData, escrows.length, chainKeyForEscrows]);
 
   const chainProjects = useMemo(() => {
     if (!chainData || escrows.length === 0) return [];
