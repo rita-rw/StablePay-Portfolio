@@ -87,3 +87,17 @@ Off by default — if `SMTP_HOST`, `SMTP_USER` or `SMTP_PASS` is missing, no ema
 Emails go to the email address each wallet registered with: the seller hears about new, funded, cancelled and approved projects; the buyer hears when the seller accepts, declines or submits work; disputes go to both parties and to `ADMIN_EMAIL`.
 
 With Gmail, use an [App Password](https://myaccount.google.com/apppasswords), not your normal password. Leave email off on a public demo — anyone can register any address, so the server would send mail to strangers.
+
+### Known limitation: events while the backend is offline
+
+The listener saves each on-chain event as it happens. A few details exist only in those
+events, not in the contracts' current state: when a project was funded or cancelled, and how
+a resolved dispute was split. If the backend is offline when such an event happens, it
+catches up on the on-chain state when it restarts, but cannot read the old events back —
+free RPC endpoints only allow `eth_getLogs` over 10–200 blocks per call. The funding date
+is then set to the time of the catch-up, and the cancellation date and dispute split stay
+empty.
+
+Keep the backend running and this never happens. A fresh database against a newly deployed
+factory has no history to miss either. A planned fix is to store the last processed block
+and read only the missed range in small chunks.
