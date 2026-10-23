@@ -10,6 +10,7 @@ import { API_URL, PLATFORM_ADDRESS } from "@/lib/constants";
 import { authFetch } from "@/lib/authFetch";
 import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle } from "@/lib/formatters";
 import { useMounted } from "@/hooks/useMounted";
+import { useNow } from "@/hooks/useNow";
 
 /** Compact "2d 3h" / "3h 10m" / "5m" style remaining-time label. */
 function formatDuration(ms: number): string {
@@ -41,6 +42,7 @@ export default function AdminProjectDisputesPage() {
   const router = useRouter();
   const { address, isConnected, status } = useAccount();
   const mounted = useMounted();
+  const now = useNow();
   // 'all-seller' | 'all-buyer' | 'custom' — tracks which resolve mode is selected per dispute
   const [resolveModes, setResolveModes] = useState<Record<string, "all-seller" | "all-buyer" | "custom">>({});
   const [customInputs, setCustomInputs] = useState<Record<string, string>>({});
@@ -308,10 +310,10 @@ export default function AdminProjectDisputesPage() {
             const openedByBuyer =
               !dispute.disputeOpenedBy || !displayBuyer ||
               dispute.disputeOpenedBy.toLowerCase() === displayBuyer.toLowerCase();
-            const canResolve = !openedByBuyer || (openedAt ? Date.now() >= new Date(openedAt).getTime() + windowMs : false);
+            const canResolve = !openedByBuyer || (openedAt ? now >= new Date(openedAt).getTime() + windowMs : false);
             const isResolvingThis = activeResolveId === dispute.id;
             const unlockAt = openedAt ? new Date(openedAt).getTime() + windowMs : null;
-            const msUntilUnlock = unlockAt !== null ? unlockAt - Date.now() : null;
+            const msUntilUnlock = unlockAt !== null ? unlockAt - now : null;
             // Only claim "the buyer opened this" when we actually know it — canResolve
             // defaults to locked on missing data, so the banner must stay vague then.
             const buyerOpenedKnown = !!(
