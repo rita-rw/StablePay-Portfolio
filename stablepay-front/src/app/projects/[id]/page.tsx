@@ -11,7 +11,7 @@ import { useUser } from "@/hooks/useUser";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
-import { authFetch } from "@/lib/authFetch";
+import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
 
 function GrowingTextarea({
@@ -240,14 +240,14 @@ export default function ProjectDetailPage() {
     setMilestonesLoaded(true);
   }, []);
 
-  const fetchMilestones = useCallback(() => {
+  const fetchMilestones = useCallback((background = false) => {
     const apiUrl = API_URL;
     if (!apiUrl || !escrowAddress) return;
     fetch(`${apiUrl}/projects/${escrowAddress}/milestones`)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => applyMilestones(data))
       .catch(() => {});
-    if (walletClient) {
+    if (walletClient && (!background || hasValidAuth(walletClient.account!.address))) {
       authFetch(`${apiUrl}/projects/${escrowAddress}/milestones`, walletClient)
         .then((response) => (response.ok ? response.json() : null))
         .then((data) => applyMilestones(data))
@@ -279,7 +279,7 @@ export default function ProjectDetailPage() {
   // Background polling so both parties see updates from the other side
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchMilestones();
+      fetchMilestones(true);
       fetchEvents();
     }, 5000);
     return () => clearInterval(interval);

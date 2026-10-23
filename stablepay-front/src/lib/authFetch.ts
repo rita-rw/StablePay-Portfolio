@@ -15,9 +15,13 @@ let cachedAuth: {
 // Prevent parallel signMessage calls from triggering multiple MetaMask popups
 let pendingSign: Promise<void> | null = null;
 
+export function hasValidAuth(address: string): boolean {
+  return cachedAuth !== null && cachedAuth.address === address && Date.now() < cachedAuth.expiresAt;
+}
+
 async function ensureAuth(walletClient: WalletClient): Promise<void> {
   const address = walletClient.account!.address;
-  if (cachedAuth && cachedAuth.address === address && Date.now() < cachedAuth.expiresAt) return;
+  if (hasValidAuth(address)) return;
 
   if (pendingSign) {
     await pendingSign;
