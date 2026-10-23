@@ -5,6 +5,7 @@ import { useAccount, useWalletClient } from "wagmi";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/hooks/useUser";
 import { registerUser } from "@/services/users";
+import { useMounted } from "@/hooks/useMounted";
 
 export default function RegisterPage() {
   return (
@@ -21,8 +22,7 @@ function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") ?? "/projects";
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useMounted();
 
   const [companyName, setCompanyName] = useState("");
   const [orgNumber, setOrgNumber] = useState("");

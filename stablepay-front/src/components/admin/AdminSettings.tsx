@@ -7,6 +7,7 @@ import Link from "next/link";
 import EscrowFactoryABI from "@/abi/EscrowFactory.json";
 import { updateAdminSetting } from "@/services/adminSettings";
 import { PLATFORM_ADDRESS, FACTORY_ADDRESS, BASESCAN_URL } from "@/lib/constants";
+import { useMounted } from "@/hooks/useMounted";
 
 const FACTORY = FACTORY_ADDRESS as `0x${string}`;
 const ABI = EscrowFactoryABI.abi as never[];
@@ -137,7 +138,7 @@ function SettingRow({
 export default function AdminSettings() {
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const router = useRouter();
 
   // On-chain reads
@@ -185,8 +186,6 @@ export default function AdminSettings() {
   const [tokenAddress, setTokenAddress] = useState("");
   /** Optimistic values — wagmi refetch can lag behind confirmed factory txs. */
   const [overrides, setOverrides] = useState<Partial<Record<SettingKey, number>>>({});
-
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (mounted && (!isConnected || address?.toLowerCase() !== PLATFORM_ADDRESS?.toLowerCase())) {

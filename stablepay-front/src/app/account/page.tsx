@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 import { useRouter } from "next/navigation";
 import { fetchUser, updateUser } from "@/services/users";
+import { useMounted } from "@/hooks/useMounted";
 
 type UserProfile = {
   address: string;
@@ -24,7 +25,7 @@ export default function AccountPage() {
   const { data: walletClient } = useWalletClient();
   const router = useRouter();
 
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -32,8 +33,6 @@ export default function AccountPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [form, setForm] = useState<EditState>({ companyName: "", orgNumber: "", email: "" });
-
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!mounted) return;

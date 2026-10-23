@@ -9,6 +9,7 @@ import { fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
 import { getMilestoneStatus, shortAddr, decodeTitle } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
+import { useMounted } from "@/hooks/useMounted";
 
 type ProjectGroup = {
   escrowAddress: string;
@@ -28,13 +29,11 @@ type Tab = "active" | "resolved";
 export default function AdminPage() {
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [escrows, setEscrows] = useState<Escrow[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("active");
   const router = useRouter();
-
-  useEffect(() => setMounted(true), []);
 
   const fetchProjects = useCallback(async () => {
     if (!isConnected || !address || !walletClient || address.toLowerCase() !== PLATFORM_ADDRESS?.toLowerCase()) return;

@@ -13,6 +13,7 @@ import EscrowFactoryABI from "@/abi/EscrowFactory.json";
 import { validateMilestones, MAX_MILESTONES } from "@/lib/escrow-validation";
 import { useFactoryConfig } from "@/hooks/useFactoryConfig";
 import { useUser } from "@/hooks/useUser";
+import { useMounted } from "@/hooks/useMounted";
 import { seedProject, saveProjectMetadata } from "@/services/projects";
 import { FACTORY_ADDRESS, USDC_ADDRESS } from "@/lib/constants";
 import { parseFactoryError, formatUSDC, calcFeeBase } from "@/lib/formatters";
@@ -25,8 +26,7 @@ export default function CreateProjectPage() {
   const router = useRouter();
   const { safeMaxFeeBps } = useFactoryConfig();
   const { isRegistered, loading: userLoading } = useUser();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useMounted();
 
   const [sellerAddress, setSellerAddress] = useState("");
   const [title, setTitle] = useState("");

@@ -7,6 +7,7 @@ import { baseSepolia } from "wagmi/chains";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Shield } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
+import { useMounted } from "@/hooks/useMounted";
 import { PLATFORM_ADDRESS, USDC_ADDRESS } from "@/lib/constants";
 import { usePathname } from "next/navigation";
 
@@ -23,10 +24,9 @@ const ERC20_BALANCE_ABI = [
 export default function Header() {
   const { address, isConnected, chainId: wagmiChainId, connector, status } = useAccount();
   const { user, isRegistered, checked } = useUser();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   /** Actual wallet chain — prefer the connected connector's provider (not window.ethereum). */
   const [walletChainId, setWalletChainId] = useState<number | undefined>(undefined);
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!mounted || !isConnected || !connector) {

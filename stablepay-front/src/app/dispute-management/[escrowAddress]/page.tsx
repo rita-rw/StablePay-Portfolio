@@ -9,6 +9,7 @@ import { fetchAdminDisputeDetail } from "@/services/admin";
 import { API_URL, PLATFORM_ADDRESS } from "@/lib/constants";
 import { authFetch } from "@/lib/authFetch";
 import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle } from "@/lib/formatters";
+import { useMounted } from "@/hooks/useMounted";
 
 /** Compact "2d 3h" / "3h 10m" / "5m" style remaining-time label. */
 function formatDuration(ms: number): string {
@@ -39,7 +40,7 @@ export default function AdminProjectDisputesPage() {
   const escrowAddress = rawEscrowAddress as `0x${string}`;
   const router = useRouter();
   const { address, isConnected, status } = useAccount();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   // 'all-seller' | 'all-buyer' | 'custom' — tracks which resolve mode is selected per dispute
   const [resolveModes, setResolveModes] = useState<Record<string, "all-seller" | "all-buyer" | "custom">>({});
   const [customInputs, setCustomInputs] = useState<Record<string, string>>({});
@@ -59,8 +60,6 @@ export default function AdminProjectDisputesPage() {
   const [noteSaving, setNoteSaving] = useState<string | null>(null);
   const [noteErrors, setNoteErrors] = useState<Record<string, string>>({});
   const pendingNoteRef = useRef<{ id: string; milestoneIndex: number; note: string } | null>(null);
-
-  useEffect(() => setMounted(true), []);
 
   // Fetch metadata from backend (admin endpoint — triggers syncSingleEscrow)
   const { data: walletClient } = useWalletClient();

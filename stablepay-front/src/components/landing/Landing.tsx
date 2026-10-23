@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useUser } from "@/hooks/useUser";
+import { useMounted } from "@/hooks/useMounted";
 import Dashboard from "@/components/dashboard/Dashboard";
 import AdminDashboard from "@/components/admin/AdminDashboard";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
@@ -72,12 +73,8 @@ export default function Landing() {
   const { address, isConnected, status } = useAccount();
   const { openConnectModal } = useConnectModal();
   const { user, isRegistered, checked } = useUser();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const wasDisconnectedRef = useRef(false);
-  useEffect(() => {
-    const id = setTimeout(() => setMounted(true), 0);
-    return () => clearTimeout(id);
-  }, []);
 
   const connected = mounted && isConnected;
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());

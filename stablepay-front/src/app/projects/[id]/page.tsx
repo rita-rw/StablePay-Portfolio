@@ -8,6 +8,7 @@ import { formatUnits, keccak256, toHex } from "viem";
 import { Pencil, Copy, Check } from "lucide-react";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
+import { useMounted } from "@/hooks/useMounted";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
@@ -96,7 +97,7 @@ export default function ProjectDetailPage() {
   const { data: walletClient } = useWalletClient();
   const router = useRouter();
   const { isRegistered, checked: userChecked } = useUser();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [activeTab, setActiveTab] = useState<"overview" | "timeline">("overview");
   const [escrowMeta, setEscrowMeta] = useState<{
     title?: string | null;
@@ -134,7 +135,6 @@ export default function ProjectDetailPage() {
   const [titleSaving, setTitleSaving] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
   const [escrowCopied, setEscrowCopied] = useState(false);
-  useEffect(() => setMounted(true), []);
   const escrowAddress = id as `0x${string}`;
 
   const copyEscrowAddress = async () => {

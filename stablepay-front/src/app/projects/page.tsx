@@ -10,6 +10,7 @@ import { fetchUserProjects, fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
 import { getMilestoneStatus, getDisplayStatus, statusBadge, decodeTitle } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
+import { useMounted } from "@/hooks/useMounted";
 
 type Tab = "active" | "completed" | "all";
 const ITEMS_PER_PAGE = 6;
@@ -37,7 +38,7 @@ function ProjectsList() {
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [escrows, setEscrows] = useState<Escrow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +51,6 @@ function ProjectsList() {
     const query = params.toString();
     router.replace(query ? `/projects?${query}` : "/projects", { scroll: false });
   }
-  useEffect(() => setMounted(true), []);
 
   const fetchProjects = useCallback(async () => {
     if (!isConnected || !address || !walletClient) return;
