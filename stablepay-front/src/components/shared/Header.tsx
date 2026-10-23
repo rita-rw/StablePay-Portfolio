@@ -29,10 +29,7 @@ export default function Header() {
   const [walletChainId, setWalletChainId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
-    if (!mounted || !isConnected || !connector) {
-      setWalletChainId(undefined);
-      return;
-    }
+    if (!mounted || !isConnected || !connector) return;
 
     let cancelled = false;
     let removeListener: (() => void) | undefined;
@@ -97,6 +94,7 @@ export default function Header() {
       cancelled = true;
       window.clearInterval(interval);
       removeListener?.();
+      setWalletChainId(undefined);
     };
   }, [mounted, isConnected, connector, address]);
 

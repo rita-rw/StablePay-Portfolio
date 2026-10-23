@@ -36,20 +36,6 @@ export default function CreateProjectPage() {
     { label: "", amount: "" },
   ]);
 
-  useEffect(() => {
-    setMilestones((current) => {
-      let changed = false;
-      const next = current.map((m) => {
-        if (m.amount !== "" && !/^\d*\.?\d{0,6}$/.test(m.amount)) {
-          changed = true;
-          return { ...m, amount: "" };
-        }
-        return m;
-      });
-      return changed ? next : current;
-    });
-  }, [milestones]);
-
   const {
     writeContract,
     data: txHash,
