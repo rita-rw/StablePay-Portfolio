@@ -8,6 +8,7 @@ import { formatUnits, keccak256, toHex } from "viem";
 import { Pencil, Copy, Check } from "lucide-react";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
+import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
@@ -1124,6 +1125,7 @@ export default function ProjectDetailPage() {
       ? Number(correctionWindowDaysOnChain)
       : escrowMeta?.correctionWindowDays ?? 0;
 
+  const now = useNow();
   const dayMs = 24 * 60 * 60 * 1000;
   const autoApprovalMs = autoApprovalDays * dayMs;
   const disputeTimeoutMs = disputeTimeoutDays * dayMs;
@@ -1135,7 +1137,7 @@ export default function ProjectDetailPage() {
 
   function isAutoApprovalReady(submittedAt: string | null | undefined): boolean {
     if (!submittedAt || autoApprovalMs <= 0) return false;
-    return Date.now() - new Date(submittedAt).getTime() >= autoApprovalMs;
+    return now - new Date(submittedAt).getTime() >= autoApprovalMs;
   }
 
   function autoReleaseAt(submittedAt: string | null | undefined): Date | null {
@@ -1151,12 +1153,12 @@ export default function ProjectDetailPage() {
 
   function isDisputeResubmitWindow(disputeOpenedAt: string | null | undefined): boolean {
     if (!disputeOpenedAt || correctionWindowMs <= 0) return false;
-    return Date.now() - new Date(disputeOpenedAt).getTime() < correctionWindowMs;
+    return now - new Date(disputeOpenedAt).getTime() < correctionWindowMs;
   }
 
   function isDisputeTimeoutReady(disputeOpenedAt: string | null | undefined): boolean {
     if (!disputeOpenedAt || disputeTimeoutMs <= 0) return false;
-    return Date.now() - new Date(disputeOpenedAt).getTime() >= disputeTimeoutMs;
+    return now - new Date(disputeOpenedAt).getTime() >= disputeTimeoutMs;
   }
 
   function handleClaimAutoApproval(milestoneIndex: number) {
@@ -1997,7 +1999,7 @@ export default function ProjectDetailPage() {
                   {(() => {
                     const releaseAt = autoReleaseAt(m.submittedAt);
                     if (!releaseAt) return null;
-                    const ready = releaseAt.getTime() <= Date.now();
+                    const ready = releaseAt.getTime() <= now;
                     return (
                       <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                         {ready
@@ -2095,7 +2097,7 @@ export default function ProjectDetailPage() {
                         if (!releaseAt) {
                           return `Waiting for buyer approval — auto-approval available in ${dayLabel(autoApprovalDays)}`;
                         }
-                        if (releaseAt.getTime() <= Date.now()) {
+                        if (releaseAt.getTime() <= now) {
                           return "The approval window has ended. You can release this payment.";
                         }
                         return `Waiting for buyer approval. You can release this payment automatically on ${formatAutoRelease(releaseAt)}.`;
