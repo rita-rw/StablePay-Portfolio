@@ -179,7 +179,11 @@ function ProjectsList() {
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   // Reset page when tab changes
-  useEffect(() => setPage(1), [activeTab]);
+  const [prevTab, setPrevTab] = useState(activeTab);
+  if (activeTab !== prevTab) {
+    setPrevTab(activeTab);
+    setPage(1);
+  }
 
   // Tab counts
   const activeCount = enrichedEscrows.filter((e) => ACTIVE_STATUSES.includes(e.displayStatus)).length;

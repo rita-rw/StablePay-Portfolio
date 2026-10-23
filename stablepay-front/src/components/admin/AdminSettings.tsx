@@ -52,9 +52,11 @@ function SettingRow({
   const [inputVal, setInputVal] = useState("");
   const [rangeError, setRangeError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [prevResult, setPrevResult] = useState(result);
+  if (result !== prevResult) {
+    setPrevResult(result);
     if (result?.ok) setInputVal("");
-  }, [result]);
+  }
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white px-6 py-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
