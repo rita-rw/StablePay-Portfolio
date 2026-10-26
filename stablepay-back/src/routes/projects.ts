@@ -7,6 +7,7 @@ import {
   RenameTitleBody,
   DeliveryBody,
   DisputeBody,
+  EscalationBody,
   SellerResponseBody,
 } from "../validators/projectSchemas";
 import {
@@ -32,9 +33,10 @@ router.patch("/:escrowAddress/title", requireAuth, validate(RenameTitleBody), re
 router.get("/:address", optionalAuth, getProjectsByAddress);
 router.get("/:escrowAddress/milestones", optionalAuth, getMilestones);
 router.get("/:escrowAddress/events", getEvents);
-router.post("/:escrowAddress/milestones/:index/delivery", requireAuth, validate(DeliveryBody), saveDelivery);
-router.post("/:escrowAddress/milestones/:index/dispute", requireAuth, validate(DisputeBody), saveDisputeReason);
-router.post("/:escrowAddress/milestones/:index/escalation-reason", requireAuth, saveEscalationReason);
+// No requireAuth: the controller checks the text against the hash stored on-chain by the tx
+router.post("/:escrowAddress/milestones/:index/delivery", validate(DeliveryBody), saveDelivery);
+router.post("/:escrowAddress/milestones/:index/dispute", validate(DisputeBody), saveDisputeReason);
+router.post("/:escrowAddress/milestones/:index/escalation-reason", validate(EscalationBody), saveEscalationReason);
 router.post("/:escrowAddress/milestones/:index/seller-response", requireAuth, validate(SellerResponseBody), saveSellerResponse);
 
 export default router;

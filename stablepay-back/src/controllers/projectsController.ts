@@ -1,4 +1,4 @@
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import type { AuthRequest } from "../auth";
 import { getAddress } from "viem";
 import { sanitize } from "../utils/sanitize";
@@ -27,6 +27,7 @@ import {
 } from "../services/milestoneService";
 import { lookupCompanies } from "../services/userService";
 import { syncSingleEscrow } from "../listener";
+import { matchesOnChainHash } from "../services/onChainMilestoneService";
 
 const syncInFlight = new Set<string>();
 
@@ -462,7 +463,7 @@ export async function getEvents(req: AuthRequest, res: Response): Promise<void> 
   }
 }
 
-export async function saveDelivery(req: AuthRequest, res: Response): Promise<void> {
+export async function saveDelivery(req: Request, res: Response): Promise<void> {
   const escrowAddress = req.params.escrowAddress as string;
   const milestoneIndex = parseInt(req.params.index as string, 10);
   const { deliveryReference } = req.body;
@@ -478,11 +479,6 @@ export async function saveDelivery(req: AuthRequest, res: Response): Promise<voi
     const escrow = await findEscrowById(escrowAddress);
     if (!escrow) {
       res.status(404).json({ error: "Escrow not found" });
-      return;
-    }
-
-    if (req.signerAddress?.toLowerCase() !== escrow.seller.toLowerCase()) {
-      res.status(403).json({ error: "Only the seller can submit delivery" });
       return;
     }
 
@@ -505,6 +501,12 @@ export async function saveDelivery(req: AuthRequest, res: Response): Promise<voi
       }
     }
 
+    // Raw text, before sanitize — must be the exact string the seller hashed on-chain
+    if (!(await matchesOnChainHash(escrowAddress, milestoneIndex, "deliveryHash", deliveryReference))) {
+      res.status(403).json({ error: "Delivery does not match the on-chain hash" });
+      return;
+    }
+
     await updateMilestoneDelivery(escrowAddress, milestoneIndex, cleanDelivery);
 
     res.json({ ok: true });
@@ -514,7 +516,7 @@ export async function saveDelivery(req: AuthRequest, res: Response): Promise<voi
   }
 }
 
-export async function saveDisputeReason(req: AuthRequest, res: Response): Promise<void> {
+export async function saveDisputeReason(req: Request, res: Response): Promise<void> {
   const escrowAddress = req.params.escrowAddress as string;
   const milestoneIndex = parseInt(req.params.index as string, 10);
   const { disputeReason } = req.body;
@@ -530,11 +532,6 @@ export async function saveDisputeReason(req: AuthRequest, res: Response): Promis
     const escrow = await findEscrowById(escrowAddress);
     if (!escrow) {
       res.status(404).json({ error: "Escrow not found" });
-      return;
-    }
-
-    if (req.signerAddress?.toLowerCase() !== escrow.buyer.toLowerCase()) {
-      res.status(403).json({ error: "Only the buyer can file a dispute reason" });
       return;
     }
 
@@ -556,6 +553,11 @@ export async function saveDisputeReason(req: AuthRequest, res: Response): Promis
       }
     }
 
+    if (!(await matchesOnChainHash(escrowAddress, milestoneIndex, "disputeReason", disputeReason))) {
+      res.status(403).json({ error: "Dispute reason does not match the on-chain hash" });
+      return;
+    }
+
     await updateMilestoneDisputeReason(escrowAddress, milestoneIndex, cleanReason);
 
     res.json({ ok: true });
@@ -565,17 +567,17 @@ export async function saveDisputeReason(req: AuthRequest, res: Response): Promis
   }
 }
 
-export async function saveEscalationReason(req: AuthRequest, res: Response): Promise<void> {
+export async function saveEscalationReason(req: Request, res: Response): Promise<void> {
   const escrowAddress = req.params.escrowAddress as string;
   const milestoneIndex = parseInt(req.params.index as string, 10);
-  const { escalationReason } = req.body as { escalationReason?: unknown };
+  const { escalationReason } = req.body as { escalationReason: string };
 
   if (!/^0x[a-fA-F0-9]{40}$/.test(escrowAddress) || isNaN(milestoneIndex)) {
     res.status(400).json({ error: "Invalid params" });
     return;
   }
 
-  const cleanReason = sanitize(String(escalationReason ?? "")).slice(0, 500);
+  const cleanReason = sanitize(escalationReason);
 
   try {
     const escrow = await findEscrowById(escrowAddress);
@@ -584,14 +586,15 @@ export async function saveEscalationReason(req: AuthRequest, res: Response): Pro
       return;
     }
 
-    if (req.signerAddress?.toLowerCase() !== escrow.seller.toLowerCase()) {
-      res.status(403).json({ error: "Only the seller can submit an escalation reason" });
-      return;
-    }
-
     const milestone = await findMilestone(escrowAddress, milestoneIndex);
     if (!milestone) {
       res.status(404).json({ error: "Milestone not found" });
+      return;
+    }
+
+    // sellerEscalate overwrites the on-chain disputeReason with the seller's hash
+    if (!(await matchesOnChainHash(escrowAddress, milestoneIndex, "disputeReason", escalationReason))) {
+      res.status(403).json({ error: "Escalation reason does not match the on-chain hash" });
       return;
     }
 

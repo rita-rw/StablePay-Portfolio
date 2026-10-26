@@ -3,6 +3,7 @@ export const MAX_DESCRIPTION = 2000;
 export const MAX_DELIVERY_REF = 1000;
 export const MAX_DISPUTE_REASON = 2000;
 export const MAX_SELLER_RESPONSE = 500;
+export const MAX_ESCALATION_REASON = 500;
 export const MIN_RESOLUTION_NOTE = 10;
 export const MAX_RESOLUTION_NOTE = 1000;
 export const MAX_COMPANY_NAME = 200;

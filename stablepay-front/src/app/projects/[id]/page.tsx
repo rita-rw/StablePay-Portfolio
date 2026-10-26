@@ -72,6 +72,26 @@ type ProjectEvent = {
   milestoneIndex: number | null;
 };
 
+/**
+ * Saves the text behind an on-chain hash (delivery, dispute, escalation). No signature:
+ * the backend checks the text against the hash the tx stored. Retries because the
+ * backend's RPC node can be a block behind right after the tx confirms.
+ */
+async function postWithRetry(url: string, body: object, attempts = 3): Promise<boolean> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) return true;
+    } catch { /* retry */ }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+
 function getEventLabel(type: string, milestoneIndex: number | null): string {
   const n = milestoneIndex !== null ? milestoneIndex + 1 : "";
   const labels: Record<string, string> = {
@@ -812,11 +832,21 @@ export default function ProjectDetailPage() {
 
   // Track escalated milestones for processing spinner
   const lastEscalateIndexRef = useRef<number | null>(null);
+  const pendingEscalationRef = useRef<{ milestoneIndex: number; reason: string } | null>(null);
 
   useEffect(() => {
     if (!isEscalateSuccess || lastEscalateIndexRef.current === null) return;
     setProcessingMilestones((prev) => new Map(prev).set(lastEscalateIndexRef.current!, "ESCALATED"));
-  }, [isEscalateSuccess]);
+
+    // Save the text only after the tx confirms — the backend checks it against the new on-chain hash
+    if (pendingEscalationRef.current) {
+      const { milestoneIndex, reason } = pendingEscalationRef.current;
+      pendingEscalationRef.current = null;
+      if (API_URL) {
+        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/escalation-reason`, { escalationReason: reason });
+      }
+    }
+  }, [isEscalateSuccess, escrowAddress]);
 
   function handleAcceptProject() {
     writeAcceptProject({
@@ -835,24 +865,17 @@ export default function ProjectDetailPage() {
   }
 
   function handleEscalate(milestoneIndex: number) {
+    const reason = escalationReasons[milestoneIndex]?.trim();
+    if (!reason) return;
     lastEscalateIndexRef.current = milestoneIndex;
     setEscalateIndex(milestoneIndex);
-    const reason = keccak256(toHex("Seller escalation"));
+    pendingEscalationRef.current = { milestoneIndex, reason };
     writeEscalate({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "sellerEscalate",
-      args: [BigInt(milestoneIndex), reason],
+      args: [BigInt(milestoneIndex), keccak256(toHex(reason))],
     });
-    const text = (escalationReasons[milestoneIndex] ?? "").trim();
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (text && apiUrl && walletClient) {
-      authFetch(`${apiUrl}/projects/${escrowAddress}/milestones/${milestoneIndex}/escalation-reason`, walletClient, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ escalationReason: text }),
-      }).catch(() => {});
-    }
   }
 
   async function handleSaveSellerResponse(milestoneIndex: number) {
@@ -918,20 +941,9 @@ export default function ProjectDetailPage() {
       const { milestoneIndex, reference } = pendingDeliveryRef.current;
       pendingDeliveryRef.current = null;
       setOptimisticDeliveries((prev) => ({ ...prev, [milestoneIndex]: reference }));
-      const apiUrl = API_URL;
-      if (apiUrl && walletClient) {
-        const saveWithRetry = async (attempts: number) => {
-          for (let i = 0; i < attempts; i++) {
-            try {
-              const res = await authFetch(`${apiUrl}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, walletClient, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ deliveryReference: reference }),
-              });
-              if (res.ok) return;
-            } catch { /* retry */ }
-            if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
-          }
+      if (API_URL) {
+        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, { deliveryReference: reference }).then((ok) => {
+          if (ok) return;
           // Retry exhausted — roll back optimistic state and restore input
           setConfirmedSubmits((prev) => {
             const next = new Set(prev);
@@ -941,11 +953,9 @@ export default function ProjectDetailPage() {
           setOptimisticDeliveries((prev) => { const next = { ...prev }; delete next[milestoneIndex]; return next; });
           setDeliveryInputs((prev) => ({ ...prev, [milestoneIndex]: reference }));
           setDeliverySaveError((prev) => ({ ...prev, [milestoneIndex]: "Could not save delivery reference. Please try again." }));
-        };
-        saveWithRetry(3);
+        });
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- walletClient is stable ref, don't re-fire on change
   }, [isSubmitSuccess, escrowAddress]);
 
   useEffect(() => {
@@ -970,16 +980,10 @@ export default function ProjectDetailPage() {
       const { milestoneIndex, reason } = pendingDisputeRef.current;
       pendingDisputeRef.current = null;
       setOptimisticDisputes((prev) => ({ ...prev, [milestoneIndex]: reason }));
-      const apiUrl = API_URL;
-      if (apiUrl && walletClient) {
-        authFetch(`${apiUrl}/projects/${escrowAddress}/milestones/${milestoneIndex}/dispute`, walletClient, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ disputeReason: reason }),
-        }).catch(() => {});
+      if (API_URL) {
+        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/dispute`, { disputeReason: reason });
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- walletClient is stable ref, don't re-fire on change
   }, [isOpenDisputeSuccess, escrowAddress]);
 
   useEffect(() => {
@@ -989,28 +993,15 @@ export default function ProjectDetailPage() {
     if (pendingResubmitRef.current) {
       const { milestoneIndex, reference } = pendingResubmitRef.current;
       pendingResubmitRef.current = null;
-      const apiUrl = API_URL;
-      if (apiUrl && walletClient) {
-        const saveWithRetry = async (attempts: number) => {
-          for (let i = 0; i < attempts; i++) {
-            try {
-              const res = await authFetch(`${apiUrl}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, walletClient, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ deliveryReference: reference }),
-              });
-              if (res.ok) return;
-            } catch { /* retry */ }
-            if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
-          }
+      if (API_URL) {
+        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, { deliveryReference: reference }).then((ok) => {
+          if (ok) return;
           // Retry exhausted — restore input to the frozen value and show error
           setResubmitInputs((prev) => ({ ...prev, [milestoneIndex]: reference }));
           setDeliverySaveError((prev) => ({ ...prev, [milestoneIndex]: "Could not save delivery reference. Please try again." }));
-        };
-        saveWithRetry(3);
+        });
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- walletClient is stable ref, don't re-fire on change
   }, [isResubmitSuccess, escrowAddress]);
 
   useEffect(() => {
@@ -2271,7 +2262,7 @@ export default function ProjectDetailPage() {
                         </button>
                         <button
                           onClick={() => handleEscalate(m.milestoneIndex)}
-                          disabled={isEscalatePending || isEscalateConfirming}
+                          disabled={!escalationReasons[m.milestoneIndex]?.trim() || isEscalatePending || isEscalateConfirming}
                           className="flex-1 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
                         >
                           {isEscalatePending && escalateIndex === m.milestoneIndex

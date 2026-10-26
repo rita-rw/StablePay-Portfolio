@@ -6,6 +6,7 @@ import {
   MAX_DELIVERY_REF,
   MAX_DISPUTE_REASON,
   MAX_SELLER_RESPONSE,
+  MAX_ESCALATION_REASON,
   MIN_RESOLUTION_NOTE,
   MAX_RESOLUTION_NOTE,
 } from "../utils/constants";
@@ -69,6 +70,14 @@ export const DisputeBody = z.object({
     .string("disputeReason is required")
     .min(1, "disputeReason is required")
     .max(MAX_DISPUTE_REASON, `disputeReason must be at most ${MAX_DISPUTE_REASON} characters`),
+});
+
+// No .trim() on texts that are hashed on-chain — the backend must hash exactly what the frontend hashed
+export const EscalationBody = z.object({
+  escalationReason: z
+    .string("escalationReason is required")
+    .min(1, "escalationReason is required")
+    .max(MAX_ESCALATION_REASON, `escalationReason must be at most ${MAX_ESCALATION_REASON} characters`),
 });
 
 export const SellerResponseBody = z.object({
