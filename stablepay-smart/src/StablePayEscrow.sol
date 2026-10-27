@@ -64,7 +64,8 @@ contract StablePayEscrow is ReentrancyGuard {
     // These protect users from the platform changing critical rules after deployment.
 
     /// @notice Extra fee taken only when the platform resolves a dispute (1% = 100 bps)
-    /// @dev This is on top of the normal platform fee, and only applies when platform intervenes
+    /// @dev This is on top of the normal platform fee, and only applies when platform intervenes.
+    ///      Not charged on claimDisputeTimeout — the platform did not intervene there.
     uint256 public constant DISPUTE_FEE_BPS = 100;
 
     // ============ Mutable State ============
@@ -124,6 +125,7 @@ contract StablePayEscrow is ReentrancyGuard {
     event MilestoneAutoApproved(uint256 indexed milestoneIndex);
 
     /// @notice Emitted when either party claims a dispute timeout (platform did not act in time)
+    /// @dev disputeFee is always 0 — kept so the event signature stays the same for indexers
     event DisputeTimeoutClaimed(uint256 indexed milestoneIndex, uint256 buyerRefund, uint256 disputeFee);
 
     /// @notice Emitted when the seller resubmits corrected work during a buyer-opened dispute
@@ -310,6 +312,11 @@ contract StablePayEscrow is ReentrancyGuard {
 
         Milestone storage m = milestones[milestoneIndex];
         require(m.status == MilestoneStatus.SUBMITTED, "Wrong status");
+        // After the auto-approval deadline the funds belong to the seller — buyer can no longer dispute.
+        // Uses < so it never overlaps with claimAutoApproval's >=
+        if (msg.sender == BUYER) {
+            require(block.timestamp < m.submittedAt + (AUTO_APPROVAL_DAYS * 1 days), "Auto-approval period elapsed");
+        }
 
         m.status = MilestoneStatus.DISPUTED;
         m.disputeReason = reason;
@@ -328,7 +335,8 @@ contract StablePayEscrow is ReentrancyGuard {
         Milestone storage m = milestones[milestoneIndex];
         require(m.status == MilestoneStatus.DISPUTED, "Wrong status");
         require(m.disputeOpenedBy == BUYER, "No correction window");
-        require(block.timestamp <= m.disputeOpenedAt + (CORRECTION_WINDOW_DAYS * 1 days), "Correction window expired");
+        // Uses < so it never overlaps with resolveDispute's >=
+        require(block.timestamp < m.disputeOpenedAt + (CORRECTION_WINDOW_DAYS * 1 days), "Correction window expired");
 
         // Reset the milestone back to SUBMITTED with the new delivery
         m.status = MilestoneStatus.SUBMITTED;
@@ -356,7 +364,7 @@ contract StablePayEscrow is ReentrancyGuard {
         // Transfer ownership of the dispute to the seller — admin can now resolve immediately
         m.disputeOpenedBy = SELLER;
         m.disputeReason = reason;
-        m.disputeOpenedAt = block.timestamp;
+        // disputeOpenedAt is NOT reset — the buyer's dispute timeout keeps counting from the original dispute
 
         emit DisputeEscalated(milestoneIndex, reason);
     }
@@ -478,7 +486,8 @@ contract StablePayEscrow is ReentrancyGuard {
 
     /// @notice Either party can trigger this if the platform has not resolved a dispute in time
     /// @dev Safety net against an inactive or malicious platform holding funds hostage.
-    ///      Buyer always gets the refund — if no one resolves the dispute, seller loses by default.
+    ///      Buyer always gets the full refund — if no one resolves the dispute, seller loses by default.
+    ///      No dispute fee: the platform did not resolve the dispute, so it earns nothing.
     /// @param milestoneIndex Index of the disputed milestone
     function claimDisputeTimeout(uint256 milestoneIndex) external nonReentrant {
         require(msg.sender == BUYER || msg.sender == SELLER, "Not party");
@@ -490,13 +499,9 @@ contract StablePayEscrow is ReentrancyGuard {
 
         m.status = MilestoneStatus.REFUNDED;
 
-        uint256 disputeFee = _calculateFee(m.amount, DISPUTE_FEE_BPS);
-        uint256 buyerRefund = m.amount - disputeFee;
+        IERC20(TOKEN).safeTransfer(BUYER, m.amount);
 
-        IERC20(TOKEN).safeTransfer(PLATFORM, disputeFee);
-        IERC20(TOKEN).safeTransfer(BUYER, buyerRefund);
-
-        emit DisputeTimeoutClaimed(milestoneIndex, buyerRefund, disputeFee);
+        emit DisputeTimeoutClaimed(milestoneIndex, m.amount, 0);
     }
 
     // ============ Internal Helpers ============

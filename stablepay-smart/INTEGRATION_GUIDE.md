@@ -175,7 +175,7 @@ factory.createEscrow(
 | `resubmitDuringDispute(index, deliveryHash)` | Seller | Within 7 days of buyer-opened dispute | Moves back to SUBMITTED. Resets auto-approval timer. |
 | `resolveDispute(index, sellerAward)` | Platform | After 7-day correction window (if buyer opened) | Splits funds. 1% dispute fee from total, then split remainder. |
 | `claimAutoApproval(index)` | Seller | After AUTO_APPROVAL_DAYS since submission | Same payout as buyer approve. |
-| `claimDisputeTimeout(index)` | Buyer or Seller | After DISPUTE_TIMEOUT_DAYS since dispute opened | Buyer gets refund minus 1% fee. |
+| `claimDisputeTimeout(index)` | Buyer or Seller | After DISPUTE_TIMEOUT_DAYS since dispute opened | Buyer gets the full refund, no fee. |
 | `cancelEscrow()` | Buyer | Any time (no active milestones) | Refunds all PENDING milestones. Reverts if any SUBMITTED/DISPUTED. |
 
 #### Read Functions
@@ -260,7 +260,7 @@ event MilestoneRefunded(uint256 indexed milestoneIndex, uint256 amount);
 | Dispute → seller gets all | 2.5% of sellerAward | 1% of total pot | Dispute fee: 10, Seller award: 990, Platform fee: 24.75, Seller net: 965.25, Platform total: 34.75 |
 | Dispute → buyer gets all | None | 1% of total pot | Dispute fee: 10, Buyer: 990, Platform: 10 |
 | Dispute → 50/50 split | 2.5% of sellerAward | 1% of total pot | Dispute fee: 10, Remaining: 990, Each gets 495, Seller fee: 12.375 |
-| Dispute timeout | None | 1% of total pot | Buyer: 990, Platform: 10 |
+| Dispute timeout | None | None | Buyer: 1000, Platform: 0 |
 
 **Key rule:** Dispute fee (1%) always comes from the total pot FIRST, then the remainder is split. Platform fee (2.5%) only applies to what the seller receives.
 
@@ -272,7 +272,7 @@ event MilestoneRefunded(uint256 indexed milestoneIndex, uint256 amount);
 |-------|----------|-------------|--------------|
 | **Auto-approval** | 14 days (configurable) | Seller submits milestone | Seller can call `claimAutoApproval()` if buyer hasn't approved/disputed |
 | **Correction window** | 7 days (constant) | Buyer opens dispute | Seller can resubmit corrected work. Platform cannot resolve during this window. |
-| **Dispute timeout** | 30 days (configurable) | Dispute is opened | Either party can call `claimDisputeTimeout()` — buyer gets refund minus 1% |
+| **Dispute timeout** | 30 days (configurable) | Dispute is opened | Either party can call `claimDisputeTimeout()` — buyer gets the full refund |
 
 ---
 

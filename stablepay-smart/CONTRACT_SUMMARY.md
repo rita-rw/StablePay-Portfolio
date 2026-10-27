@@ -106,7 +106,7 @@ After the audit, the team split into 3 branches:
 ### Since Then — Solo Maintenance
 
 - 28 additional tests written solo after the team phase ended (**109 tests total**, across 13 test contracts)
-- The correction window was refactored from a fixed 7-day constant into a configurable factory-level setting (`defaultCorrectionWindowDays`, 0–30 days, **default: 0 days**), locked per-escrow at creation. See the Timers and Constants sections below for the current behavior.
+- The correction window was refactored from a fixed 7-day constant into a configurable factory-level setting (`defaultCorrectionWindowDays`, 0–30 days, **default: 7 days**), locked per-escrow at creation. See the Timers and Constants sections below for the current behavior.
 
 ---
 
@@ -205,11 +205,12 @@ All fees are in basis points. 100 bps = 1%.
 | Dispute → seller wins 100% | 2.5% of seller award | 1% of total | Dispute fee: 10 → Seller award: 990 → Platform fee: 24.75 → Seller net: 965.25 |
 | Dispute → buyer wins 100% | — | 1% of total | Buyer gets 990, Platform gets 10 |
 | Dispute → 50/50 split | 2.5% of seller portion | 1% of total | Dispute fee: 10 → remaining 990 → each 495 → seller pays 12.38 fee |
-| Dispute timeout | — | 1% of total | Buyer gets 990, Platform gets 10 |
+| Dispute timeout | — | — | Buyer gets 1000, Platform gets 0 |
 
 **Key rule:** The 1% dispute fee always comes out of the total pot first — before any split.
 The 2.5% platform fee only applies to what the seller receives.
 This means the platform earns the same dispute fee regardless of who wins.
+On dispute timeout the platform did not resolve, so it takes no fee at all.
 
 ---
 
@@ -218,8 +219,8 @@ This means the platform earns the same dispute fee regardless of who wins.
 | Timer | Duration | Starts when | What can happen |
 |-------|----------|-------------|----------------|
 | Auto-approval | 14 days (configurable 1–90) | Seller submits a milestone | Seller can call `claimAutoApproval()` if buyer never acts |
-| Correction window | Configurable per factory, 0–30 days (**default: 0 days**) | Buyer opens a dispute | Seller can resubmit corrected work during the window. Platform cannot resolve until it elapses. Locked in per-escrow at creation. |
-| Dispute timeout | 30 days (configurable 14–180) | Dispute is opened | Either party can call `claimDisputeTimeout()` — buyer gets refund minus 1% |
+| Correction window | Configurable per factory, 0–30 days (**default: 7 days**) | Buyer opens a dispute | Seller can resubmit corrected work during the window. Platform cannot resolve until it elapses. Locked in per-escrow at creation. |
+| Dispute timeout | 30 days (configurable 14–180) | Dispute is opened | Either party can call `claimDisputeTimeout()` — buyer gets the full refund |
 
 ---
 

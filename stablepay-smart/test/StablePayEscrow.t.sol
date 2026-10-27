@@ -579,6 +579,34 @@ contract AutoApprovalTest is Test {
         vm.prank(seller);
         escrow.claimAutoApproval(0);
     }
+
+    function test_BuyerDispute_RevertsAtAutoApprovalDeadline() public {
+        vm.warp(block.timestamp + 14 days); // exactly when the seller can claim
+
+        vm.prank(buyer);
+        vm.expectRevert("Auto-approval period elapsed");
+        escrow.openDispute(0, keccak256("too late"));
+    }
+
+    function test_BuyerDispute_AllowedJustBeforeDeadline() public {
+        vm.warp(block.timestamp + 14 days - 1);
+
+        vm.prank(buyer);
+        escrow.openDispute(0, keccak256("reason"));
+
+        (, StablePayEscrow.MilestoneStatus status,,,,,) = escrow.milestones(0);
+        assertEq(uint8(status), uint8(StablePayEscrow.MilestoneStatus.DISPUTED));
+    }
+
+    function test_SellerDispute_AllowedAfterDeadline() public {
+        vm.warp(block.timestamp + 14 days);
+
+        vm.prank(seller);
+        escrow.openDispute(0, keccak256("seller reason"));
+
+        (, StablePayEscrow.MilestoneStatus status,,,,,) = escrow.milestones(0);
+        assertEq(uint8(status), uint8(StablePayEscrow.MilestoneStatus.DISPUTED));
+    }
 }
 
 contract AutoApprovalFactoryTest is Test {
@@ -903,7 +931,7 @@ contract FeeProtectionTest is Test {
  *
  * If a dispute sits unresolved for DISPUTE_TIMEOUT_DAYS (default 30),
  * either party can call claimDisputeTimeout() to refund the buyer.
- * 1% dispute fee still goes to platform.
+ * No dispute fee — the platform did not resolve, so the buyer gets the full amount.
  */
 contract DisputeTimeoutTest is Test {
     EscrowFactory public factory;
@@ -968,11 +996,8 @@ contract DisputeTimeoutTest is Test {
         (, StablePayEscrow.MilestoneStatus status,,,,,) = escrow.milestones(0);
         assertEq(uint8(status), uint8(StablePayEscrow.MilestoneStatus.REFUNDED));
 
-        uint256 expectedDisputeFee = (MILESTONE_AMOUNT * 100) / 10_000; // 1%
-        uint256 expectedBuyerRefund = MILESTONE_AMOUNT - expectedDisputeFee;
-
-        assertEq(token.balanceOf(platform), expectedDisputeFee);
-        assertEq(token.balanceOf(buyer), expectedBuyerRefund);
+        assertEq(token.balanceOf(platform), 0);
+        assertEq(token.balanceOf(buyer), MILESTONE_AMOUNT);
         assertEq(token.balanceOf(seller), 0);
     }
 
@@ -986,10 +1011,8 @@ contract DisputeTimeoutTest is Test {
         (, StablePayEscrow.MilestoneStatus status,,,,,) = escrow.milestones(0);
         assertEq(uint8(status), uint8(StablePayEscrow.MilestoneStatus.REFUNDED));
 
-        uint256 expectedDisputeFee = (MILESTONE_AMOUNT * 100) / 10_000;
-        uint256 expectedBuyerRefund = MILESTONE_AMOUNT - expectedDisputeFee;
-
-        assertEq(token.balanceOf(buyer), expectedBuyerRefund);
+        assertEq(token.balanceOf(platform), 0);
+        assertEq(token.balanceOf(buyer), MILESTONE_AMOUNT);
         assertEq(token.balanceOf(seller), 0);
     }
 
@@ -1059,11 +1082,9 @@ contract DisputeTimeoutTest is Test {
     function test_ClaimDisputeTimeout_EmitsEvent() public {
         vm.warp(block.timestamp + 30 days);
 
-        uint256 expectedDisputeFee = (MILESTONE_AMOUNT * 100) / 10_000;
-        uint256 expectedBuyerRefund = MILESTONE_AMOUNT - expectedDisputeFee;
-
+        // disputeFee field is kept in the event but always 0
         vm.expectEmit(true, false, false, true);
-        emit StablePayEscrow.DisputeTimeoutClaimed(0, expectedBuyerRefund, expectedDisputeFee);
+        emit StablePayEscrow.DisputeTimeoutClaimed(0, MILESTONE_AMOUNT, 0);
 
         vm.prank(buyer);
         escrow.claimDisputeTimeout(0);
@@ -1315,10 +1336,20 @@ contract ResubmitDuringDisputeTest is Test {
         escrow.resubmitDuringDispute(0, keccak256("corrected-delivery"));
     }
 
-    function test_ResubmitDuringDispute_ExactDeadline_Succeeds() public {
+    function test_ResubmitDuringDispute_ExactDeadline_Reverts() public {
         StablePayEscrow escrow = _createBuyerDisputedEscrow();
 
-        vm.warp(block.timestamp + 7 days); // exactly at boundary (<=)
+        vm.warp(block.timestamp + 7 days); // exactly at boundary — resolveDispute is allowed from here
+
+        vm.prank(seller);
+        vm.expectRevert("Correction window expired");
+        escrow.resubmitDuringDispute(0, keccak256("corrected-delivery"));
+    }
+
+    function test_ResubmitDuringDispute_JustBeforeDeadline_Succeeds() public {
+        StablePayEscrow escrow = _createBuyerDisputedEscrow();
+
+        vm.warp(block.timestamp + 7 days - 1);
 
         vm.prank(seller);
         escrow.resubmitDuringDispute(0, keccak256("corrected-delivery"));
@@ -1812,6 +1843,24 @@ contract SellerEscalateTest is Test {
         vm.expectRevert("No correction window");
         escrow.resubmitDuringDispute(0, keccak256("new delivery"));
     }
+
+    function test_SellerEscalate_DoesNotResetDisputeTimeout() public {
+        StablePayEscrow escrow = _createBuyerDisputedEscrow();
+        uint256 timeout = escrow.DISPUTE_TIMEOUT_DAYS() * 1 days;
+
+        // Seller escalates one day before the buyer's timeout
+        vm.warp(block.timestamp + timeout - 1 days);
+        vm.prank(seller);
+        escrow.sellerEscalate(0, keccak256("my work is correct"));
+
+        // Buyer can still claim at the original deadline — escalation did not restart the clock
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(buyer);
+        escrow.claimDisputeTimeout(0);
+
+        (, StablePayEscrow.MilestoneStatus status,,,,,) = escrow.milestones(0);
+        assertEq(uint256(status), uint256(StablePayEscrow.MilestoneStatus.REFUNDED));
+    }
 }
 
 // ============================================================
@@ -1835,13 +1884,14 @@ contract CorrectionWindowFactoryTest is Test {
     }
 
     function test_DefaultCorrectionWindowDays_InitialValue() public view {
-        assertEq(factory.defaultCorrectionWindowDays(), 0);
+        assertEq(factory.defaultCorrectionWindowDays(), 7);
     }
 
     function test_SetDefaultCorrectionWindowDays_Success() public {
+        // Use a value different from the default (7) so the test proves the setter changed something
         vm.prank(platform);
-        factory.setDefaultCorrectionWindowDays(7);
-        assertEq(factory.defaultCorrectionWindowDays(), 7);
+        factory.setDefaultCorrectionWindowDays(14);
+        assertEq(factory.defaultCorrectionWindowDays(), 14);
     }
 
     function test_SetDefaultCorrectionWindowDays_Zero_Succeeds() public {
@@ -1873,10 +1923,10 @@ contract CorrectionWindowFactoryTest is Test {
 
     function test_SetDefaultCorrectionWindowDays_EmitsEvent() public {
         vm.expectEmit(false, false, false, true);
-        emit EscrowFactory.DefaultCorrectionWindowDaysChanged(0, 7);
+        emit EscrowFactory.DefaultCorrectionWindowDaysChanged(7, 14);
 
         vm.prank(platform);
-        factory.setDefaultCorrectionWindowDays(7);
+        factory.setDefaultCorrectionWindowDays(14);
     }
 
     function test_NewEscrowUsesUpdatedCorrectionWindowDays() public {

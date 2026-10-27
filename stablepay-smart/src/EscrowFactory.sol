@@ -105,7 +105,7 @@ contract EscrowFactory {
     /// @notice How many days before a dispute can be claimed as timed out (default: 30)
     uint256 public defaultDisputeTimeoutDays;
 
-    /// @notice How many days the seller has to resubmit after a buyer-opened dispute (default: 0)
+    /// @notice How many days the seller has to resubmit after a buyer-opened dispute (default: 7)
     uint256 public defaultCorrectionWindowDays;
 
     /// @notice Which tokens buyers are allowed to pay with (e.g. USDC)
@@ -143,8 +143,8 @@ contract EscrowFactory {
         // If a dispute sits unresolved for 30 days, either party can trigger a timeout
         defaultDisputeTimeoutDays = 30;
 
-        // Seller correction window after a buyer-opened dispute — set to 0 for testing
-        defaultCorrectionWindowDays = 0;
+        // After a buyer opens a dispute, the seller has 7 days to resubmit before the platform can resolve
+        defaultCorrectionWindowDays = 7;
     }
 
     // ============ Modifiers ============

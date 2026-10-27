@@ -40,7 +40,8 @@ PENDING ─┬─→ SUBMITTED ─┬─→ PAID       (approved or auto-approve
 
 - **Approval (normal or auto-approval):** 2.5% platform fee deducted from the seller's payout
 - **Dispute resolution:** 1% dispute fee taken off the top of the milestone amount first — plus the 2.5% platform fee on the seller's share if the seller is awarded anything
-- **Dispute timeout / buyer awarded 100%:** only the 1% dispute fee applies — no 2.5% fee, since the seller gets nothing
+- **Buyer awarded 100%:** only the 1% dispute fee applies — no 2.5% fee, since the seller gets nothing
+- **Dispute timeout:** no fee — the buyer gets the full milestone amount back, since the platform did not resolve the dispute
 
 ## Deployed Addresses (Base Sepolia)
 
