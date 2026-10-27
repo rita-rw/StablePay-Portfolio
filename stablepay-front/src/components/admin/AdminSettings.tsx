@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAccount, useWalletClient, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
+import { BaseError } from "viem";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import EscrowFactoryABI from "@/abi/EscrowFactory.json";
-import { updateAdminSetting } from "@/services/adminSettings";
 import { PLATFORM_ADDRESS, FACTORY_ADDRESS, BASESCAN_URL } from "@/lib/constants";
 import { useMounted } from "@/hooks/useMounted";
 
@@ -102,6 +102,11 @@ function SettingRow({
               setRangeError(`Maximum is ${inputMax}${suffix}.`);
               return;
             }
+            // Step 1 means whole numbers — the contract takes uint256, and BigInt(2.5) throws
+            if ((inputStep ?? 1) === 1 && !Number.isInteger(v)) {
+              setRangeError("Must be a whole number.");
+              return;
+            }
             setRangeError(null);
             onSubmit(v);
           }}
@@ -139,7 +144,9 @@ function SettingRow({
 
 export default function AdminSettings() {
   const { address, isConnected } = useAccount();
-  const { data: walletClient } = useWalletClient();
+  // The platform wallet signs factory txs itself — the backend holds no private key
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
   const mounted = useMounted();
   const router = useRouter();
 
@@ -195,34 +202,46 @@ export default function AdminSettings() {
     }
   }, [mounted, isConnected, address, router]);
 
+  /** Sends a factory tx from the connected wallet and waits until it is mined. */
+  async function writeFactory(functionName: string, args: unknown[]): Promise<TxResult> {
+    if (!publicClient) return { ok: false, error: "Wallet not ready" };
+    try {
+      const hash = await writeContractAsync({ address: FACTORY, abi: ABI, functionName, args });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") return { ok: false, txHash: hash, error: "Transaction reverted" };
+      return { ok: true, txHash: hash };
+    } catch (err) {
+      // shortMessage is viem's readable one-liner, e.g. "User rejected the request."
+      return { ok: false, error: err instanceof BaseError ? err.shortMessage : "Transaction failed" };
+    }
+  }
+
   async function handleSetting(
     key: SettingKey,
-    endpoint: string,
-    body: Record<string, unknown>,
+    functionName: string,
+    args: unknown[],
     refetch: () => Promise<unknown>,
     nextValue: number,
   ) {
-    if (!walletClient) return;
     setPending((p) => ({ ...p, [key]: true }));
     setResults((r) => ({ ...r, [key]: null }));
-    const result = await updateAdminSetting(walletClient, endpoint, body);
+    const result = await writeFactory(functionName, args);
     setResults((r) => ({ ...r, [key]: result }));
     setPending((p) => ({ ...p, [key]: false }));
     if (result.ok) {
       setOverrides((o) => ({ ...o, [key]: nextValue }));
       await refetch();
-      // Frontend RPC can lag one block behind backend waitForTransactionReceipt
+      // The RPC node serving reads can lag one block behind the node that returned the receipt
       await new Promise((r) => setTimeout(r, 1000));
       await refetch();
     }
   }
 
   async function handleToken(action: "tokenApprove" | "tokenRemove") {
-    if (!walletClient || !tokenAddress) return;
-    const endpoint = action === "tokenApprove" ? "/admin/settings/tokens/approve" : "/admin/settings/tokens/remove";
+    if (!tokenAddress) return;
     setPending((p) => ({ ...p, [action]: true }));
     setResults((r) => ({ ...r, [action]: null }));
-    const result = await updateAdminSetting(walletClient, endpoint, { tokenAddress });
+    const result = await writeFactory(action === "tokenApprove" ? "approveToken" : "removeToken", [tokenAddress]);
     setResults((r) => ({ ...r, [action]: result }));
     setPending((p) => ({ ...p, [action]: false }));
   }
@@ -267,21 +286,23 @@ export default function AdminSettings() {
             result={results.fee}
             onSubmit={(v) => {
               const feeBps = Math.round(v * 100);
-              handleSetting("fee", "/admin/settings/fee", { feeBps }, refetchFee, feeBps);
+              handleSetting("fee", "setPlatformFeeBps", [BigInt(feeBps)], refetchFee, feeBps);
             }}
           />
 
           <SettingRow
             label="Auto-Approval Days"
-            description="Days before a submitted milestone is automatically approved."
+            description="Days before a submitted milestone is automatically approved. Minimum 1 day, maximum 90."
             currentValue={autoApprovalNum !== null ? `${autoApprovalNum} days` : "—"}
             inputLabel="Days"
             inputMin={1}
+            inputMax={90}
+            unit="days"
             loading={loadingAutoApproval}
             pending={pending.autoApproval}
             result={results.autoApproval}
             onSubmit={(v) =>
-              handleSetting("autoApproval", "/admin/settings/auto-approval", { days: v }, refetchAutoApproval, v)
+              handleSetting("autoApproval", "setDefaultAutoApprovalDays", [BigInt(v)], refetchAutoApproval, v)
             }
           />
 
@@ -299,8 +320,8 @@ export default function AdminSettings() {
             onSubmit={(v) =>
               handleSetting(
                 "disputeTimeout",
-                "/admin/settings/dispute-timeout",
-                { days: v },
+                "setDefaultDisputeTimeoutDays",
+                [BigInt(v)],
                 refetchDisputeTimeout,
                 v,
               )
@@ -309,18 +330,20 @@ export default function AdminSettings() {
 
           <SettingRow
             label="Correction Window Days"
-            description="Days a seller has to correct work after a dispute is raised (0 = disabled)."
+            description="Days a seller has to correct work after a dispute is raised (0 = disabled). Maximum 30."
             currentValue={correctionWindowNum !== null ? `${correctionWindowNum} days` : "—"}
             inputLabel="Days"
             inputMin={0}
+            inputMax={30}
+            unit="days"
             loading={loadingCorrectionWindow}
             pending={pending.correctionWindow}
             result={results.correctionWindow}
             onSubmit={(v) =>
               handleSetting(
                 "correctionWindow",
-                "/admin/settings/correction-window",
-                { days: v },
+                "setDefaultCorrectionWindowDays",
+                [BigInt(v)],
                 refetchCorrectionWindow,
                 v,
               )

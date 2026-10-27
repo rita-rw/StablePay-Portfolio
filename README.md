@@ -91,7 +91,7 @@ npx prisma migrate dev
 npm run dev                 # http://localhost:3001
 ```
 
-`PLATFORM_ADDRESS` and `PRIVATE_KEY` belong to the platform admin wallet — leave them blank to try the app. Buyer/seller flows (create, fund, submit, approve) work fully without them, since those transactions are signed by each user's own wallet in the browser. Only the `/admin` routes (dispute resolution, platform settings) require them.
+`PLATFORM_ADDRESS` is the public address of the platform admin wallet — leave it blank to try the app. It only unlocks the `/admin` pages. The backend holds no private key: every on-chain action — create, fund, submit, approve, resolve a dispute, change factory settings — is signed in the browser by the connected wallet, and the contracts decide who is allowed.
 
 **2. Frontend**
 ```bash
