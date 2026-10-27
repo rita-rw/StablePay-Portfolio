@@ -28,6 +28,7 @@ import {
 import { lookupCompanies } from "../services/userService";
 import { syncSingleEscrow } from "../listener";
 import { matchesOnChainHash } from "../services/onChainMilestoneService";
+import { computeMetadataHash } from "../utils/metadataHash";
 
 const syncInFlight = new Set<string>();
 
@@ -185,7 +186,14 @@ export async function seedProject(req: AuthRequest, res: Response): Promise<void
 }
 
 export async function saveMetadata(req: AuthRequest, res: Response): Promise<void> {
-  const { title, description, metadataHash } = req.body;
+  const { title, description, metadataHash, milestoneLabels } = req.body;
+
+  // Raw text, before sanitize — must hash to the metadataHash the buyer puts on-chain.
+  // Saved before the escrow exists, so this is what stops anyone overwriting the title for that hash.
+  if (computeMetadataHash(title, description ?? "", milestoneLabels ?? []) !== metadataHash.toLowerCase()) {
+    res.status(403).json({ error: "Metadata does not match metadataHash" });
+    return;
+  }
 
   const cleanTitle = sanitize(title);
   const cleanDescription = description ? sanitize(description) : null;

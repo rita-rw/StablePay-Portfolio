@@ -7,7 +7,7 @@ import {
   useWaitForTransactionReceipt,
   useWalletClient,
 } from "wagmi";
-import { parseUnits, keccak256, toBytes, decodeEventLog, getAddress } from "viem";
+import { parseUnits, decodeEventLog, getAddress } from "viem";
 import { useRouter } from "next/navigation";
 import EscrowFactoryABI from "@/abi/EscrowFactory.json";
 import { validateMilestones, MAX_MILESTONES } from "@/lib/escrow-validation";
@@ -17,6 +17,7 @@ import { useMounted } from "@/hooks/useMounted";
 import { seedProject, saveProjectMetadata } from "@/services/projects";
 import { FACTORY_ADDRESS, USDC_ADDRESS } from "@/lib/constants";
 import { parseFactoryError, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { computeMetadataHash } from "@/lib/metadataHash";
 import type { MilestoneInput } from "@/types/escrow";
 import Link from "next/link";
 
@@ -203,9 +204,10 @@ export default function CreateProjectPage() {
     const milestoneAmounts = fundedMilestones.map((m) => parseUnits(m.amount, 6));
     const milestoneLabels = fundedMilestones.map((m) => m.label.trim());
 
-    const metadataHash = keccak256(
-      toBytes(`${title || ""}:${description || ""}:${milestoneLabels.join("|")}`)
-    ) as `0x${string}`;
+    // Hash exactly the values sent to the backend — it recomputes the hash and rejects a mismatch
+    const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+    const metadataHash = computeMetadataHash(cleanTitle, cleanDescription, milestoneLabels);
 
     // Save metadata to backend BEFORE creating on-chain, so the listener can
     // match the title when EscrowCreated fires — even if the browser closes after tx.
@@ -215,8 +217,8 @@ export default function CreateProjectPage() {
     }
     try {
       const result = await saveProjectMetadata(walletClient, {
-        title: title.trim(),
-        description: description.trim() || null,
+        title: cleanTitle,
+        description: cleanDescription || null,
         metadataHash,
         milestoneLabels,
       });
