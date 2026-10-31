@@ -7,8 +7,9 @@ import {EscrowFactory} from "../src/EscrowFactory.sol";
 /**
  * @title DeployStablePayEscrow
  * @notice Deploy script for the StablePay factory.
- *         Blocks mainnet deploys, deploys the factory, approves USDC if the
- *         address is set in .env, and logs a summary.
+ *         Blocks mainnet deploys, deploys the factory and logs a summary.
+ *         USDC is not approved here: approveToken is onlyPlatform, and the
+ *         deploy wallet is not PLATFORM. Approve it in Admin Settings instead.
  */
 contract DeployStablePayEscrow is Script {
     function run() external {
@@ -22,12 +23,6 @@ contract DeployStablePayEscrow is Script {
 
         EscrowFactory factory = new EscrowFactory(platform);
 
-        // If USDC_ADDRESS is set in .env, approve it right at deploy time
-        address usdc = vm.envOr("USDC_ADDRESS", address(0));
-        if (usdc != address(0)) {
-            factory.approveToken(usdc);
-        }
-
         vm.stopBroadcast();
 
         // Deployment summary
@@ -37,8 +32,7 @@ contract DeployStablePayEscrow is Script {
         console.log("Factory:           ", address(factory));
         console.log("Platform Fee (bps):", factory.platformFeeBps());
         console.log("Auto-Approval Days:", factory.defaultAutoApprovalDays());
-        if (usdc != address(0)) {
-            console.log("USDC approved:     ", usdc);
-        }
+        console.log("Dispute Timeout Days:", factory.defaultDisputeTimeoutDays());
+        console.log("Correction Window Days:", factory.defaultCorrectionWindowDays());
     }
 }

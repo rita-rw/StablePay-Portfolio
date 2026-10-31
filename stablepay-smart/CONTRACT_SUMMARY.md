@@ -275,15 +275,18 @@ forge install
 # Build
 forge build
 
-# Run all tests (109 tests)
+# Run all tests (114 tests)
 forge test
 
 # Deploy to Base Sepolia
 cp .env.example .env
-# Fill in: PLATFORM_ADDRESS, RPC_URL, PRIVATE_KEY, ETHERSCAN_API_KEY, USDC_ADDRESS
+# Fill in: PLATFORM_ADDRESS, RPC_URL, PRIVATE_KEY (deploy wallet, not PLATFORM), ETHERSCAN_API_KEY
 source .env
 forge script script/DeployStablePayEscrow.s.sol:DeployStablePayEscrow \
   --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY \
   --broadcast \
   --verify
 ```
+
+After deploy, approve USDC (`0x036CbD53842c5426634e7929541eC2318f3dCF7e` on Base Sepolia) in Admin Settings while connected with the PLATFORM wallet — `approveToken` is `onlyPlatform`, so the deploy script cannot do it.

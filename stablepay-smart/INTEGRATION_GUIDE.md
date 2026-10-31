@@ -32,11 +32,12 @@ forge test -vvv      # verbose output (shows traces on failure)
 
 ```bash
 cp .env.example .env
-# Fill in: PLATFORM_ADDRESS, RPC_URL, PRIVATE_KEY, ETHERSCAN_API_KEY
+# Fill in: PLATFORM_ADDRESS, RPC_URL, PRIVATE_KEY (deploy wallet, not PLATFORM), ETHERSCAN_API_KEY
 
 source .env
 forge script script/DeployStablePayEscrow.s.sol:DeployStablePayEscrow \
   --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY \
   --broadcast \
   --verify
 ```
@@ -44,8 +45,9 @@ forge script script/DeployStablePayEscrow.s.sol:DeployStablePayEscrow \
 The deploy script will:
 - Block mainnet deploys (safety check)
 - Deploy the `EscrowFactory` contract
-- Approve USDC if `USDC_ADDRESS` is set in `.env`
 - Print a deployment summary
+
+After deploy, approve USDC in Admin Settings with the PLATFORM wallet — `approveToken` is `onlyPlatform`, so the deploy wallet cannot call it.
 
 ---
 
