@@ -193,11 +193,18 @@ export default function AdminProjectDisputesPage() {
     setNoteSaving(id);
     setNoteErrors((prev) => ({ ...prev, [id]: "" }));
     try {
-      const res = await authFetch(`${API_URL}/admin/disputes/${escrowAddress}/milestones/${milestoneIndex}/resolution-note`, walletClient, {
+      const postNote = () => authFetch(`${API_URL}/admin/disputes/${escrowAddress}/milestones/${milestoneIndex}/resolution-note`, walletClient, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ resolutionNote: note }),
       });
+      let res = await postNote();
+      // 409 right after the resolve tx: the backend's RPC can be a block behind
+      // and still see the dispute as open. Retry a few times before giving up.
+      for (let attempt = 0; res.status === 409 && attempt < 5; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        res = await postNote();
+      }
       if (!res.ok) throw new Error();
       setSavedNotes((prev) => ({ ...prev, [id]: note }));
     } catch {
