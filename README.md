@@ -70,7 +70,7 @@ createEscrow()  →  [seller accepts / rejects]
 
 | | Address |
 |---|---|
-| EscrowFactory | [`0x43f38b20bc9d10a0e0d58812bb30d6676003f97e`](https://sepolia.basescan.org/address/0x43f38b20bc9d10a0e0d58812bb30d6676003f97e) |
+| EscrowFactory | [`0x51f0011be8abcc57b9948c03c84f28068564a77d`](https://sepolia.basescan.org/address/0x51f0011be8abcc57b9948c03c84f28068564a77d) |
 | USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Block explorer | [sepolia.basescan.org](https://sepolia.basescan.org) |
 

@@ -44,7 +44,7 @@ const backfillClient = createPublicClient({
   transport: http(process.env.RPC_URL_FALLBACK),
 });
 
-const FACTORY_DEPLOY_BLOCK = BigInt(process.env.FACTORY_DEPLOY_BLOCK ?? "38641491");
+const FACTORY_DEPLOY_BLOCK = BigInt(process.env.FACTORY_DEPLOY_BLOCK ?? "51429061");
 const LOG_CHUNK_SIZE = 9_500n;
 // How many escrows catchUpOnChainState() syncs at once against the public RPC.
 // Higher = faster startup but bigger request bursts against the free/public RPC.
