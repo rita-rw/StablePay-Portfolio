@@ -24,7 +24,7 @@ forge build
 ### Run Tests
 
 ```bash
-forge test           # 81 tests, all passing
+forge test           # 114 tests, all passing
 forge test -vvv      # verbose output (shows traces on failure)
 ```
 
@@ -69,7 +69,7 @@ StablePayEscrow (one per project)
   ├── submitMilestone() → seller delivers work
   ├── approveMilestone() → buyer releases payment
   ├── openDispute() → either party disputes
-  ├── resubmitDuringDispute() → seller corrects work (7-day window)
+  ├── resubmitDuringDispute() → seller corrects work (correction window, default 7 days)
   ├── resolveDispute() → platform splits funds
   ├── claimAutoApproval() → seller claims if buyer ghosts
   ├── claimDisputeTimeout() → either party claims if platform ghosts
@@ -149,6 +149,8 @@ factory.createEscrow(
 
 **`setDefaultDisputeTimeoutDays(newDays)`** — Platform only, range 14–180
 
+**`setDefaultCorrectionWindowDays(newDays)`** — Platform only, range 0–30 (0 = platform can resolve immediately)
+
 #### Read Functions (free, no gas)
 
 | Function | Returns | Use for |
@@ -161,6 +163,7 @@ factory.createEscrow(
 | `platformFeeBps()` | `uint256` | Show current fee in UI |
 | `defaultAutoApprovalDays()` | `uint256` | Show in escrow creation UI |
 | `defaultDisputeTimeoutDays()` | `uint256` | Show in dispute UI |
+| `defaultCorrectionWindowDays()` | `uint256` | Show in dispute UI |
 | `approvedTokens(address)` | `bool` | Check if token is allowed |
 | `PLATFORM()` | `address` | Platform wallet address |
 
@@ -173,9 +176,9 @@ factory.createEscrow(
 | `fund()` | Buyer | After creation | Buyer must first `USDC.approve(escrowAddress, totalAmount)`, then call `fund()`. Pulls `totalAmount` from buyer. |
 | `submitMilestone(index, deliveryHash)` | Seller | After funding | Marks milestone as SUBMITTED. `deliveryHash` = keccak256 of delivery proof. |
 | `approveMilestone(index)` | Buyer | After seller submits | Releases funds: seller gets amount minus 2.5% fee, platform gets fee. |
-| `openDispute(index, reason)` | Buyer or Seller | After submission | Moves to DISPUTED. `reason` = bytes32 hash of dispute reason. |
-| `resubmitDuringDispute(index, deliveryHash)` | Seller | Within 7 days of buyer-opened dispute | Moves back to SUBMITTED. Resets auto-approval timer. |
-| `resolveDispute(index, sellerAward)` | Platform | After 7-day correction window (if buyer opened) | Splits funds. 1% dispute fee from total, then split remainder. |
+| `openDispute(index, reason)` | Buyer or Seller | After submission (buyer: only before the auto-approval time) | Moves to DISPUTED. `reason` = bytes32 hash of dispute reason. |
+| `resubmitDuringDispute(index, deliveryHash)` | Seller | Within the correction window of a buyer-opened dispute | Moves back to SUBMITTED. Resets auto-approval timer. |
+| `resolveDispute(index, sellerAward)` | Platform | After the correction window (if buyer opened) | Splits funds. 1% dispute fee from total, then split remainder. |
 | `claimAutoApproval(index)` | Seller | After AUTO_APPROVAL_DAYS since submission | Same payout as buyer approve. |
 | `claimDisputeTimeout(index)` | Buyer or Seller | After DISPUTE_TIMEOUT_DAYS since dispute opened | Buyer gets the full refund, no fee. |
 | `cancelEscrow()` | Buyer | Any time (no active milestones) | Refunds all PENDING milestones. Reverts if any SUBMITTED/DISPUTED. |
@@ -197,7 +200,7 @@ factory.createEscrow(
 | `totalAmount()` | `uint256` | Sum of all milestones |
 | `milestoneCount()` | `uint256` | Number of milestones |
 | `milestones(index)` | `(amount, status, deliveryHash, submittedAt, disputeReason, disputeOpenedAt, disputeOpenedBy)` | Full milestone data |
-| `CORRECTION_WINDOW_DAYS()` | `uint256` | Always 7 (constant) |
+| `CORRECTION_WINDOW_DAYS()` | `uint256` | Copied from the factory default at creation, fixed per escrow |
 | `DISPUTE_FEE_BPS()` | `uint256` | Always 100 = 1% (constant) |
 
 ---
@@ -221,6 +224,7 @@ event TokenApprovalChanged(address indexed token, bool approved);
 event PlatformFeeChanged(uint256 oldFeeBps, uint256 newFeeBps);
 event DefaultAutoApprovalDaysChanged(uint256 oldDays, uint256 newDays);
 event DefaultDisputeTimeoutDaysChanged(uint256 oldDays, uint256 newDays);
+event DefaultCorrectionWindowDaysChanged(uint256 oldDays, uint256 newDays);
 ```
 
 ### Escrow Events
@@ -273,7 +277,7 @@ event MilestoneRefunded(uint256 indexed milestoneIndex, uint256 amount);
 | Timer | Duration | Starts when | What happens |
 |-------|----------|-------------|--------------|
 | **Auto-approval** | 14 days (configurable) | Seller submits milestone | Seller can call `claimAutoApproval()` if buyer hasn't approved/disputed |
-| **Correction window** | 7 days (constant) | Buyer opens dispute | Seller can resubmit corrected work. Platform cannot resolve during this window. |
+| **Correction window** | 7 days (configurable, 0–30) | Buyer opens dispute | Seller can resubmit corrected work. Platform cannot resolve during this window. |
 | **Dispute timeout** | 30 days (configurable) | Dispute is opened | Either party can call `claimDisputeTimeout()` — buyer gets the full refund |
 
 ---
@@ -302,9 +306,9 @@ event MilestoneRefunded(uint256 indexed milestoneIndex, uint256 amount);
 - **Dispute:** Call `escrow.openDispute(index, reasonHash)` → listen for `DisputeOpened`
 
 ### During dispute (buyer opened)
-- Show 7-day correction window countdown (`disputeOpenedAt + 7 days`)
+- Show correction window countdown (`disputeOpenedAt + CORRECTION_WINDOW_DAYS * 86400`)
 - Seller sees: "Resubmit corrected work" button → `resubmitDuringDispute(index, newHash)`
-- After 7 days: Platform can resolve via admin panel
+- After the window: Platform can resolve via admin panel
 
 ### During dispute (seller opened)
 - No correction window — platform can resolve immediately
@@ -371,7 +375,8 @@ Base Sepolia USDC is a mock contract. You can mint test tokens or use a faucet. 
 | Max fee | 1000 bps (10%) | Factory |
 | Default fee | 250 bps (2.5%) | Factory constructor |
 | Dispute fee | 100 bps (1%) | Escrow constant |
-| Correction window | 7 days | Escrow constant |
+| Correction window range | 0–30 days | Factory constant |
+| Default correction window | 7 days | Factory constructor |
 | Max milestones | 50 | Factory constant |
 | Auto-approval range | 1–90 days | Factory constants |
 | Dispute timeout range | 14–180 days | Factory constants |
@@ -398,6 +403,7 @@ Base Sepolia USDC is a mock contract. You can mint test tokens or use a faucet. 
 | `AutoApprovalDaysTooHigh()` | Above 90 days |
 | `DisputeTimeoutDaysTooLow()` | Below 14 days |
 | `DisputeTimeoutDaysTooHigh()` | Above 180 days |
+| `CorrectionWindowDaysTooHigh()` | Above 30 days |
 
 ### Escrow Errors (require strings)
 | String | When |
@@ -406,6 +412,8 @@ Base Sepolia USDC is a mock contract. You can mint test tokens or use a faucet. 
 | `"Only seller"` | Non-seller calls seller function |
 | `"Only platform"` | Non-platform calls platform function |
 | `"Not party"` | Non buyer/seller calls openDispute or timeout |
+| `"Already accepted"` | acceptProject/rejectProject after the seller already accepted |
+| `"Seller has not accepted"` | fund() before the seller accepted |
 | `"Already funded"` | fund() called twice |
 | `"Not funded"` | submitMilestone before funding |
 | `"Escrow cancelled"` | Action on cancelled escrow |
@@ -415,9 +423,11 @@ Base Sepolia USDC is a mock contract. You can mint test tokens or use a faucet. 
 | `"Active milestone exists"` | Cancel with SUBMITTED/DISPUTED milestones |
 | `"Auto-approval period not elapsed"` | Too early for auto-approval |
 | `"Dispute timeout not elapsed"` | Too early for dispute timeout |
-| `"Correction window expired"` | Resubmit after 7 days |
-| `"Correction window not expired"` | Platform resolves during 7-day window |
+| `"Auto-approval period elapsed"` | Buyer opens dispute at or after the auto-approval time |
+| `"Correction window expired"` | Resubmit after the correction window |
+| `"Correction window not expired"` | Platform resolves during the correction window |
 | `"No correction window"` | Resubmit on seller-opened dispute |
+| `"Only when buyer disputed"` | sellerEscalate on a dispute the buyer did not open |
 | `"Too high"` | sellerAward exceeds remaining after dispute fee |
 
 ---
@@ -436,10 +446,10 @@ Base Sepolia USDC is a mock contract. You can mint test tokens or use a faucet. 
 
 ```
 src/
-  EscrowFactory.sol      — Factory contract (283 lines)
-  StablePayEscrow.sol    — Escrow contract (407 lines)
+  EscrowFactory.sol      — Factory contract (342 lines)
+  StablePayEscrow.sol    — Escrow contract (515 lines)
 test/
-  StablePayEscrow.t.sol  — All tests (1444 lines, 81 tests)
+  StablePayEscrow.t.sol  — All tests (1945 lines, 114 tests)
 script/
   DeployStablePayEscrow.s.sol — Deploy script
 .env.example             — Environment variables template
