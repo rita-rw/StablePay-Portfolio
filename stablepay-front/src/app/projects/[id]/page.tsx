@@ -1860,7 +1860,7 @@ export default function ProjectDetailPage() {
                       {platformFeeBase > 0n && (
                         <>
                           <span className="text-zinc-500">Platform fee</span>
-                          <span className="text-zinc-700">{formatUSDC(platformFeeBase)} USDC <span className="text-zinc-400">(2.5%)</span></span>
+                          <span className="text-zinc-700">{formatUSDC(platformFeeBase)} USDC <span className="text-zinc-400">{isDisputeOutcome ? "(2.5% of seller's share)" : "(2.5%)"}</span></span>
                         </>
                       )}
                       {buyerRefundBase !== null && buyerRefundBase > 0n && (

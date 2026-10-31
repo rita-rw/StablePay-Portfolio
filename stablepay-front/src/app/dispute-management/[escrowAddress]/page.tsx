@@ -8,7 +8,7 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminDisputeDetail } from "@/services/admin";
 import { API_URL, PLATFORM_ADDRESS } from "@/lib/constants";
 import { authFetch } from "@/lib/authFetch";
-import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle } from "@/lib/formatters";
+import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { useMounted } from "@/hooks/useMounted";
 import { useNow } from "@/hooks/useNow";
 
@@ -426,8 +426,8 @@ export default function AdminProjectDisputesPage() {
                   <div className="rounded-lg border border-zinc-900 bg-white px-4 py-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Settlement</p>
                     {(() => {
-                      const gross = parseFloat(formatUnits(BigInt(dispute.amount), 6));
-                      const disputeFeeAmt = gross * 0.01;
+                      const gross = BigInt(dispute.amount);
+                      const disputeFeeAmt = calcFeeBase(gross, 100n);
                       const sellerAwardRaw = backendMilestones[dispute.milestoneIndex]?.sellerAward ?? optimisticAwards[dispute.id];
                       if (!sellerAwardRaw) {
                         return (
@@ -436,32 +436,33 @@ export default function AdminProjectDisputesPage() {
                           </div>
                         );
                       }
-                      const sellerGross = parseFloat(formatUnits(BigInt(sellerAwardRaw), 6));
-                      const baseFeeAmt = sellerGross * 0.025;
+                      const sellerGross = BigInt(sellerAwardRaw);
+                      const baseFeeAmt = calcFeeBase(sellerGross, 250n);
                       const net = sellerGross - baseFeeAmt;
                       const buyerAwardRaw = backendMilestones[dispute.milestoneIndex]?.buyerAward;
+                      const fallbackRefund = gross - sellerGross - disputeFeeAmt;
                       const buyerRefund = buyerAwardRaw
-                        ? parseFloat(formatUnits(BigInt(buyerAwardRaw), 6))
-                        : Math.max(0, gross - sellerGross - disputeFeeAmt);
+                        ? BigInt(buyerAwardRaw)
+                        : fallbackRefund > 0n ? fallbackRefund : 0n;
                       return (
                         <>
                           <div className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-xs">
                             <span className="text-zinc-500">Amount</span>
-                            <span className="text-zinc-800">{gross.toFixed(2)} USDC</span>
-                            <span className="text-zinc-500">Platform fee</span>
-                            <span className="text-zinc-700">{baseFeeAmt.toFixed(2)} USDC <span className="text-zinc-400">(2.5%)</span></span>
+                            <span className="text-zinc-800">{formatUSDC(gross)} USDC</span>
                             <span className="text-zinc-500">Dispute fee</span>
-                            <span className="text-zinc-700">{disputeFeeAmt.toFixed(2)} USDC <span className="text-zinc-400">(1%)</span></span>
-                            {buyerRefund > 0.001 && (
+                            <span className="text-zinc-700">{formatUSDC(disputeFeeAmt)} USDC <span className="text-zinc-400">(1%)</span></span>
+                            <span className="text-zinc-500">Platform fee</span>
+                            <span className="text-zinc-700">{formatUSDC(baseFeeAmt)} USDC <span className="text-zinc-400">(2.5% of seller&apos;s share)</span></span>
+                            {buyerRefund > 0n && (
                               <>
                                 <span className="text-zinc-500">Refunded</span>
-                                <span className="text-zinc-700">{buyerRefund.toFixed(2)} USDC</span>
+                                <span className="text-zinc-700">{formatUSDC(buyerRefund)} USDC</span>
                               </>
                             )}
                           </div>
                           <div className="mt-2 flex items-center justify-between border-t border-zinc-200 pt-2 text-xs">
                             <span className="font-medium text-zinc-700">Paid to seller</span>
-                            <span className="font-bold text-sm text-zinc-900">{net.toFixed(2)} USDC</span>
+                            <span className="font-bold text-sm text-zinc-900">{formatUSDC(net)} USDC</span>
                           </div>
                         </>
                       );
@@ -571,7 +572,7 @@ export default function AdminProjectDisputesPage() {
                         >
                           <p className={`text-xs font-semibold mb-1.5 ${mode === "all-seller" ? "text-white" : "text-zinc-800"}`}>All to seller</p>
                           <p className={`text-xs font-medium ${mode === "all-seller" ? "text-white" : "text-zinc-900"}`}>Seller receives {formatUnits(allToSellerNet, 6)} USDC</p>
-                          <p className={`text-[11px] mt-1 ${mode === "all-seller" ? "text-white/80" : "text-zinc-600"}`}>Platform fee (2.5%): {formatUnits(allToSellerPlatformFee, 6)} USDC</p>
+                          <p className={`text-[11px] mt-1 ${mode === "all-seller" ? "text-white/80" : "text-zinc-600"}`}>Platform fee (2.5% of seller&apos;s share): {formatUnits(allToSellerPlatformFee, 6)} USDC</p>
                           <p className={`text-[11px] ${mode === "all-seller" ? "text-white/80" : "text-zinc-600"}`}>Dispute fee (1%): {formatUnits(disputeFeeBig, 6)} USDC</p>
                         </button>
                         <button
@@ -623,7 +624,7 @@ export default function AdminProjectDisputesPage() {
                             <span className="font-semibold text-zinc-900">{formatUnits(previewBuyerAward!, 6)} USDC</span>
                           </div>
                           <div className="flex justify-between text-zinc-600 border-t border-zinc-100 pt-1">
-                            <span>Platform fee (2.5%)</span>
+                            <span>Platform fee (2.5% of seller&apos;s share)</span>
                             <span>{formatUnits(previewPlatformFee!, 6)} USDC</span>
                           </div>
                           <div className="flex justify-between text-zinc-600">
