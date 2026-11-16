@@ -36,7 +36,7 @@ jobs:
         run: forge test -vvv
 
   backend:
-    name: Backend (build)
+    name: Backend (build + test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -54,6 +54,9 @@ jobs:
 
       - name: Build (prisma generate + tsc)
         run: npm run build
+
+      - name: Test
+        run: npm test
 
   frontend:
     name: Frontend (build)
