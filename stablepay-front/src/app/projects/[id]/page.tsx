@@ -1103,6 +1103,14 @@ export default function ProjectDetailPage() {
     }
   }, [isCancelSuccess, refetchCancelled, fetchMilestones]);
 
+  // Project-level actions change the status at the top of the page — scroll there so the user sees it.
+  // Milestone actions are left out on purpose: the user should stay at the milestone they acted on.
+  useEffect(() => {
+    if (isAcceptSuccess || isRejectSuccess || isFundSuccess || isCancelSuccess) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [isAcceptSuccess, isRejectSuccess, isFundSuccess, isCancelSuccess]);
+
   const autoApprovalDays =
     autoApprovalDaysOnChain != null
       ? Number(autoApprovalDaysOnChain)
