@@ -6,6 +6,7 @@ import { useAccount, useReadContracts, useWalletClient } from "wagmi";
 import { type Abi, formatUnits } from "viem";
 import { useUser } from "@/hooks/useUser";
 import { fetchUserProjects } from "@/services/projects";
+import { SignatureDeclinedError } from "@/lib/authFetch";
 import { deriveProjectStatus, getMilestoneStatus, decodeTitle, calcFeeBase } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
@@ -52,6 +53,8 @@ export default function Dashboard() {
   const cachedEscrows = address ? escrowCache.get(address.toLowerCase()) : undefined;
   const [escrows, setEscrows] = useState<Escrow[]>(cachedEscrows ?? []);
   const [loading, setLoading] = useState(cachedEscrows === undefined);
+  // True when the user closed the MetaMask signature request — the list is then unknown, not empty
+  const [signatureDeclined, setSignatureDeclined] = useState(false);
 
   useEffect(() => {
     if (!address || !walletClient) return;
@@ -63,9 +66,12 @@ export default function Dashboard() {
         if (cancelled) return;
         escrowCache.set(key, data);
         setEscrows(data);
+        setSignatureDeclined(false);
       })
-      .catch(() => {
-        if (!cancelled) setEscrows([]);
+      .catch((err) => {
+        if (cancelled) return;
+        setEscrows([]);
+        setSignatureDeclined(err instanceof SignatureDeclinedError);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -282,7 +288,9 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-zinc-900 mb-4">To do</h2>
           {todos.length === 0 ? (
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-10 text-center">
-              {escrows.length === 0 ? (
+              {signatureDeclined ? (
+                <p className="text-zinc-500">Sign the message above to see your projects.</p>
+              ) : escrows.length === 0 ? (
                 <>
                   <p className="text-zinc-500 mb-4">No projects yet. Create your first escrow to get started.</p>
                   <Link
