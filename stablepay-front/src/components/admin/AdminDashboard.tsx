@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useWalletClient } from "wagmi";
 import { formatUnits } from "viem";
 import { fetchAdminProjects } from "@/services/projects";
+import { deriveProjectStatus } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
 import { Shield, AlertTriangle, Layers, ArrowRight, CheckCircle2 } from "lucide-react";
@@ -38,9 +39,10 @@ export default function AdminDashboard() {
         milestoneStatuses.push(m.status);
         if (m.status === "DISPUTED") result.disputed++;
       }
-      const allPaid = milestoneStatuses.length > 0 && milestoneStatuses.every((status) => status === "PAID");
+      // Same rule as the user dashboard: every milestone PAID, RESOLVED or REFUNDED
+      const completed = deriveProjectStatus(s.funded, s.cancelled, s.sellerAccepted, milestoneStatuses) === "COMPLETED";
       if (s.cancelled) { /* skip */ }
-      else if (allPaid) result.completed++;
+      else if (completed) result.completed++;
       else if (s.funded) result.active++;
       result.totalUSDC += BigInt(e.totalAmount);
     }
