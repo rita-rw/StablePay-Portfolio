@@ -6,7 +6,7 @@ import { useAccount, useReadContract, useReadContracts, useWalletClient, useWrit
 import { formatUnits, parseUnits } from "viem";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminDisputeDetail } from "@/services/admin";
-import { API_URL, PLATFORM_ADDRESS } from "@/lib/constants";
+import { API_URL, PLATFORM_ADDRESS, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
 import { authFetch } from "@/lib/authFetch";
 import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { useMounted } from "@/hooks/useMounted";
@@ -216,7 +216,7 @@ export default function AdminProjectDisputesPage() {
 
   function handleResolve(dispute: OnChainDispute) {
     const amountBig = BigInt(dispute.amount);
-    const disputeFeeBig = (amountBig * 100n) / 10000n;
+    const disputeFeeBig = calcFeeBase(amountBig, DISPUTE_FEE_BPS);
     const remainingBig = amountBig - disputeFeeBig;
 
     const mode = resolveModes[dispute.id];
@@ -231,7 +231,7 @@ export default function AdminProjectDisputesPage() {
       if (!input) return;
       // Input is NET seller amount — reverse to gross: gross = net * 10000 / 9750
       const netBig = parseUnits(input, 6);
-      grossBig = netBig === 0n ? 0n : (netBig * 10000n) / 9750n;
+      grossBig = netBig === 0n ? 0n : (netBig * 10_000n) / (10_000n - PLATFORM_FEE_BPS);
       if (grossBig > remainingBig) grossBig = remainingBig;
     } else {
       return;
@@ -427,7 +427,7 @@ export default function AdminProjectDisputesPage() {
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Settlement</p>
                     {(() => {
                       const gross = BigInt(dispute.amount);
-                      const disputeFeeAmt = calcFeeBase(gross, 100n);
+                      const disputeFeeAmt = calcFeeBase(gross, DISPUTE_FEE_BPS);
                       const sellerAwardRaw = backendMilestones[dispute.milestoneIndex]?.sellerAward ?? optimisticAwards[dispute.id];
                       if (!sellerAwardRaw) {
                         return (
@@ -437,7 +437,7 @@ export default function AdminProjectDisputesPage() {
                         );
                       }
                       const sellerGross = BigInt(sellerAwardRaw);
-                      const baseFeeAmt = calcFeeBase(sellerGross, 250n);
+                      const baseFeeAmt = calcFeeBase(sellerGross, PLATFORM_FEE_BPS);
                       const net = sellerGross - baseFeeAmt;
                       const buyerAwardRaw = backendMilestones[dispute.milestoneIndex]?.buyerAward;
                       const fallbackRefund = gross - sellerGross - disputeFeeAmt;
@@ -507,9 +507,9 @@ export default function AdminProjectDisputesPage() {
                 })()}
                 {!isResolved && (() => {
                   const amountBig = BigInt(dispute.amount);
-                  const disputeFeeBig = (amountBig * 100n) / 10000n;
+                  const disputeFeeBig = calcFeeBase(amountBig, DISPUTE_FEE_BPS);
                   const remainingBig = amountBig - disputeFeeBig;
-                  const allToSellerPlatformFee = (remainingBig * 250n) / 10000n;
+                  const allToSellerPlatformFee = calcFeeBase(remainingBig, PLATFORM_FEE_BPS);
                   const allToSellerNet = remainingBig - allToSellerPlatformFee;
 
                   const mode = resolveModes[dispute.id] ?? null;
@@ -524,9 +524,9 @@ export default function AdminProjectDisputesPage() {
                     try {
                       const netBig = parseUnits(customInput, 6);
                       if (netBig >= 0n && netBig <= allToSellerNet) {
-                        const grossBig = netBig === 0n ? 0n : (netBig * 10000n) / 9750n;
+                        const grossBig = netBig === 0n ? 0n : (netBig * 10_000n) / (10_000n - PLATFORM_FEE_BPS);
                         const capped = grossBig > remainingBig ? remainingBig : grossBig;
-                        previewPlatformFee = (capped * 250n) / 10000n;
+                        previewPlatformFee = calcFeeBase(capped, PLATFORM_FEE_BPS);
                         previewSellerNet = capped - previewPlatformFee;
                         previewBuyerAward = remainingBig - capped;
                       } else {

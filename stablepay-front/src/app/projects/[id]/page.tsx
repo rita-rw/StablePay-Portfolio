@@ -10,7 +10,7 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
-import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL } from "@/lib/constants";
+import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
@@ -1655,7 +1655,7 @@ export default function ProjectDetailPage() {
           <h2 className="text-lg font-semibold">Milestones</h2>
           {enrichedMilestones.map((m) => {
             const grossBase = BigInt(m.amount);
-            const feeBase = calcFeeBase(grossBase, 250n);
+            const feeBase = calcFeeBase(grossBase, PLATFORM_FEE_BPS);
             const sellerReceives = grossBase - feeBase;
             return (
               <div
@@ -1815,7 +1815,7 @@ export default function ProjectDetailPage() {
                 // units (6 decimals) using the same integer math as the contract —
                 // avoids float rounding drift (e.g. 1.00 USDC showing "0.03 USDC (2.5%)"
                 // and "0.97" instead of the real 0.025 / 0.975 split).
-                const disputeFeeBase = isDisputeOutcome ? calcFeeBase(grossBase, 100n) : 0n;
+                const disputeFeeBase = isDisputeOutcome ? calcFeeBase(grossBase, DISPUTE_FEE_BPS) : 0n;
                 let platformFeeBase = 0n;
                 let netBase = 0n;
                 let buyerRefundBase: bigint | null = null;
@@ -1829,7 +1829,7 @@ export default function ProjectDetailPage() {
                 } else if ((isDisputePaid || isDisputeResolved) && sellerAwardValue) {
                   // sellerAward = gross allocated to seller before 2.5% platform fee
                   const sellerGrossBase = BigInt(sellerAwardValue);
-                  platformFeeBase = calcFeeBase(sellerGrossBase, 250n);
+                  platformFeeBase = calcFeeBase(sellerGrossBase, PLATFORM_FEE_BPS);
                   netBase = sellerGrossBase - platformFeeBase;
                   if (isDisputeResolved) {
                     const refund = grossBase - sellerGrossBase - disputeFeeBase;
@@ -1845,7 +1845,7 @@ export default function ProjectDetailPage() {
                   buyerRefundBase = grossBase;
                 } else {
                   // Normal PAID (approved/auto-approved)
-                  platformFeeBase = calcFeeBase(grossBase, 250n);
+                  platformFeeBase = calcFeeBase(grossBase, PLATFORM_FEE_BPS);
                   netBase = grossBase - platformFeeBase;
                 }
 

@@ -8,6 +8,7 @@ import { useUser } from "@/hooks/useUser";
 import { fetchUserProjects } from "@/services/projects";
 import { SignatureDeclinedError } from "@/lib/authFetch";
 import { deriveProjectStatus, getMilestoneStatus, decodeTitle, calcFeeBase } from "@/lib/formatters";
+import { PLATFORM_FEE_BPS } from "@/lib/constants";
 import type { Escrow } from "@/types/escrow";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { Wallet, ArrowDownLeft, Plus, ArrowRight, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
@@ -32,7 +33,6 @@ const ACTION_RANK: Record<TodoAction, number> = {
   submit: 4,
 };
 
-const PLATFORM_FEE_BPS = 250n;
 
 const escrowCache = new Map<string, Escrow[]>();
 let chainCache: { key: string; data: readonly { result?: unknown }[] } | null = null;

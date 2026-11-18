@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useWalletClient } from "wagmi";
 import { fetchProjectDetail } from "@/services/projects";
 import { fetchUser } from "@/services/users";
-import { BASESCAN_URL } from "@/lib/constants";
+import { BASESCAN_URL, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
 import { decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import type { Milestone } from "@/types/escrow";
@@ -77,13 +77,13 @@ export default function ReceiptPage() {
     if (m.status === "PAID") {
       if (hadDispute && m.sellerAward) {
         const award = BigInt(m.sellerAward);
-        return sum + award - (award * BigInt(250)) / BigInt(10000);
+        return sum + award - calcFeeBase(award, PLATFORM_FEE_BPS);
       }
-      return sum + amt - (amt * BigInt(250)) / BigInt(10000);
+      return sum + amt - calcFeeBase(amt, PLATFORM_FEE_BPS);
     }
     if (m.status === "RESOLVED" && m.sellerAward) {
       const award = BigInt(m.sellerAward);
-      return sum + award - (award * BigInt(250)) / BigInt(10000);
+      return sum + award - calcFeeBase(award, PLATFORM_FEE_BPS);
     }
     return sum;
   }, BigInt(0));
@@ -94,7 +94,7 @@ export default function ReceiptPage() {
       // Only dispute-driven refunds (buyer wins a dispute) have the 1% dispute
       // fee deducted — a plain cancelEscrow() refund returns the full amount.
       const hadDispute = m.disputeOpenedAt != null;
-      return sum + (hadDispute ? amt - (amt * BigInt(100)) / BigInt(10000) : amt);
+      return sum + (hadDispute ? amt - calcFeeBase(amt, DISPUTE_FEE_BPS) : amt);
     }
     return sum;
   }, BigInt(0));
@@ -106,11 +106,11 @@ export default function ReceiptPage() {
     if (m.status === "PAID") {
       const hadDispute = m.disputeOpenedAt != null;
       const base = (hadDispute && m.sellerAward) ? BigInt(m.sellerAward) : amt;
-      return sum + (base * BigInt(250)) / BigInt(10000);
+      return sum + calcFeeBase(base, PLATFORM_FEE_BPS);
     }
     if (m.status === "RESOLVED" && m.sellerAward) {
       const award = BigInt(m.sellerAward);
-      return sum + (award * BigInt(250)) / BigInt(10000);
+      return sum + calcFeeBase(award, PLATFORM_FEE_BPS);
     }
     return sum;
   }, BigInt(0));
@@ -119,7 +119,7 @@ export default function ReceiptPage() {
     const amt = BigInt(m.amount);
     const hadDispute = m.disputeOpenedAt != null;
     if (m.status === "RESOLVED" || (m.status === "REFUNDED" && hadDispute) || (m.status === "PAID" && hadDispute)) {
-      return sum + (amt * BigInt(100)) / BigInt(10000);
+      return sum + calcFeeBase(amt, DISPUTE_FEE_BPS);
     }
     return sum;
   }, BigInt(0));
@@ -130,8 +130,8 @@ export default function ReceiptPage() {
       if (m.sellerAward) {
         const gross = BigInt(m.amount);
         const award = BigInt(m.sellerAward);
-        const disputeFee = (gross * BigInt(100)) / BigInt(10000);
-        const platformFee = (award * BigInt(250)) / BigInt(10000);
+        const disputeFee = calcFeeBase(gross, DISPUTE_FEE_BPS);
+        const platformFee = calcFeeBase(award, PLATFORM_FEE_BPS);
         const refund = gross - award - disputeFee - platformFee;
         return sum + (refund > BigInt(0) ? refund : BigInt(0));
       }
@@ -265,7 +265,7 @@ export default function ReceiptPage() {
             const isRefunded = m.status === "REFUNDED";
             const isDisputePaid = m.status === "PAID" && hadDispute;
             const isPaid = m.status === "PAID" || isResolved;
-            const disputeFeeBase = (isResolved || (isRefunded && hadDispute) || isDisputePaid) ? calcFeeBase(grossBase, 100n) : 0n;
+            const disputeFeeBase = (isResolved || (isRefunded && hadDispute) || isDisputePaid) ? calcFeeBase(grossBase, DISPUTE_FEE_BPS) : 0n;
 
             let netBase: bigint;
             let buyerRefundBase: bigint | null = null;
@@ -273,21 +273,21 @@ export default function ReceiptPage() {
 
             if (isResolved && m.sellerAward) {
               const awardBase = BigInt(m.sellerAward);
-              platformFeeBase = calcFeeBase(awardBase, 250n);
+              platformFeeBase = calcFeeBase(awardBase, PLATFORM_FEE_BPS);
               netBase = awardBase - platformFeeBase;
               let buyerAwardBase = m.buyerAward ? BigInt(m.buyerAward) : grossBase - awardBase - disputeFeeBase;
               if (buyerAwardBase < 0n) buyerAwardBase = 0n;
               buyerRefundBase = buyerAwardBase > 0n ? buyerAwardBase : null;
             } else if (isDisputePaid && m.sellerAward) {
               const awardBase = BigInt(m.sellerAward);
-              platformFeeBase = calcFeeBase(awardBase, 250n);
+              platformFeeBase = calcFeeBase(awardBase, PLATFORM_FEE_BPS);
               netBase = awardBase - platformFeeBase;
             } else if (isRefunded) {
               buyerRefundBase = m.buyerAward ? BigInt(m.buyerAward) : grossBase - disputeFeeBase;
               platformFeeBase = 0n;
               netBase = 0n;
             } else {
-              platformFeeBase = calcFeeBase(grossBase, 250n);
+              platformFeeBase = calcFeeBase(grossBase, PLATFORM_FEE_BPS);
               netBase = grossBase - platformFeeBase;
             }
 

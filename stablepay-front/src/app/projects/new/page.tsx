@@ -15,7 +15,7 @@ import { useFactoryConfig } from "@/hooks/useFactoryConfig";
 import { useUser } from "@/hooks/useUser";
 import { useMounted } from "@/hooks/useMounted";
 import { seedProject, saveProjectMetadata } from "@/services/projects";
-import { FACTORY_ADDRESS, USDC_ADDRESS } from "@/lib/constants";
+import { FACTORY_ADDRESS, USDC_ADDRESS, PLATFORM_FEE_BPS } from "@/lib/constants";
 import { parseFactoryError, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { computeMetadataHash } from "@/lib/metadataHash";
 import type { MilestoneInput } from "@/types/escrow";
@@ -105,7 +105,6 @@ export default function CreateProjectPage() {
     }
   }, [receipt, isSuccess, title, description, walletClient]);
 
-  const PLATFORM_FEE_BPS = 250n;
 
   // Parses a milestone's typed amount straight to USDC base units (6 decimals),
   // the same precision the contract works in — avoids the float rounding that
