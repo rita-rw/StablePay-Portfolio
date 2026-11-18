@@ -4,7 +4,7 @@ import { useAccount, useWalletClient, useReadContracts } from "wagmi";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { formatUnits } from "viem";
+import { formatUnits, type Abi } from "viem";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchUserProjects, fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
@@ -77,9 +77,8 @@ function ProjectsList() {
   // Read on-chain status for all escrows + milestones in a single multicall
   const contracts = useMemo(() => {
     if (escrows.length === 0) return [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const abi = StablePayEscrowABI.abi as any;
-    const calls: { address: `0x${string}`; abi: unknown; functionName: string; args?: readonly [bigint] }[] = [];
+    const abi = StablePayEscrowABI.abi as Abi;
+    const calls: { address: `0x${string}`; abi: Abi; functionName: string; args?: readonly [bigint] }[] = [];
     for (const e of escrows) {
       const addr = e.id as `0x${string}`;
       calls.push({ address: addr, abi, functionName: "sellerAccepted" });
@@ -93,8 +92,7 @@ function ProjectsList() {
   }, [escrows]);
 
   const { data: onChainData } = useReadContracts({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    contracts: contracts as any,
+    contracts,
     query: { enabled: contracts.length > 0 },
   });
 

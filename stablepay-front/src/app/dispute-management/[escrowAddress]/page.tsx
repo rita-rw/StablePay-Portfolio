@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAccount, useReadContract, useReadContracts, useWalletClient, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { formatUnits, parseUnits } from "viem";
+import { formatUnits, parseUnits, type Abi } from "viem";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminDisputeDetail } from "@/services/admin";
 import { API_URL, PLATFORM_ADDRESS, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
@@ -113,15 +113,14 @@ export default function AdminProjectDisputesPage() {
     if (count === 0) return [];
     return Array.from({ length: count }, (_, i) => ({
       address: escrowAddress,
-      abi: StablePayEscrowABI.abi,
+      abi: StablePayEscrowABI.abi as Abi,
       functionName: "milestones",
       args: [BigInt(i)],
     }));
   }, [escrowAddress, milestoneCount]);
 
   const { data: onChainMilestones } = useReadContracts({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    contracts: milestoneContracts as any,
+    contracts: milestoneContracts,
     query: { enabled: milestoneContracts.length > 0, refetchInterval: 5000 },
   });
 

@@ -4,7 +4,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, typ
 import { useParams, useRouter } from "next/navigation";
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { formatUnits, keccak256, toHex } from "viem";
+import { formatUnits, keccak256, toHex, type Abi } from "viem";
 import { Pencil, Copy, Check } from "lucide-react";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
@@ -366,15 +366,14 @@ export default function ProjectDetailPage() {
     if (count === 0) return [];
     return Array.from({ length: count }, (_, i) => ({
       address: escrowAddress,
-      abi: StablePayEscrowABI.abi,
+      abi: StablePayEscrowABI.abi as Abi,
       functionName: "milestones",
       args: [BigInt(i)],
     }));
   }, [escrowAddress, milestoneCount]);
 
   const { data: onChainMilestones } = useReadContracts({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    contracts: milestoneContracts as any,
+    contracts: milestoneContracts,
     query: { enabled: milestoneContracts.length > 0, refetchInterval: 5000 },
   });
 
@@ -457,7 +456,7 @@ export default function ProjectDetailPage() {
       const fromBlock = currentBlock > 5000n ? currentBlock - 5000n : 0n;
       return publicClient.getContractEvents({
         address: escrowAddress,
-        abi: StablePayEscrowABI.abi,
+        abi: StablePayEscrowABI.abi as Abi,
         eventName: "DisputeResolved",
         fromBlock,
       });
@@ -465,8 +464,7 @@ export default function ProjectDetailPage() {
       .then((logs) => {
         const awards: Record<number, string> = {};
         for (const log of logs) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const args = (log as any).args as { milestoneIndex?: bigint; sellerAward?: bigint };
+          const args = log.args as { milestoneIndex?: bigint; sellerAward?: bigint };
           if (args.milestoneIndex !== undefined && args.sellerAward !== undefined) {
             awards[Number(args.milestoneIndex)] = args.sellerAward.toString();
           }
