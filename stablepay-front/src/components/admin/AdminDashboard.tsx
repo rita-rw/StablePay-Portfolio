@@ -39,11 +39,10 @@ export default function AdminDashboard() {
         milestoneStatuses.push(m.status);
         if (m.status === "DISPUTED") result.disputed++;
       }
-      // Same rule as the user dashboard: every milestone PAID, RESOLVED or REFUNDED
-      const completed = deriveProjectStatus(s.funded, s.cancelled, s.sellerAccepted, milestoneStatuses) === "COMPLETED";
-      if (s.cancelled) { /* skip */ }
-      else if (completed) result.completed++;
-      else if (s.funded) result.active++;
+      // Same split as the user dashboard: completed or cancelled = closed, everything else = active
+      const status = deriveProjectStatus(s.funded, s.cancelled, s.sellerAccepted, milestoneStatuses);
+      if (status === "COMPLETED" || status === "CANCELLED") result.completed++;
+      else result.active++;
       result.totalUSDC += BigInt(e.totalAmount);
     }
     return result;
