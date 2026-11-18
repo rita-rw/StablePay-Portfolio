@@ -2,15 +2,12 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { useReadContracts, useWalletClient } from "wagmi";
-import { type Abi, formatUnits } from "viem";
+import { useWalletClient } from "wagmi";
+import { formatUnits } from "viem";
 import { fetchAdminProjects } from "@/services/projects";
-import { getMilestoneStatus } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
-import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
+import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
 import { Shield, AlertTriangle, Layers, ArrowRight, CheckCircle2 } from "lucide-react";
-
-const abi = StablePayEscrowABI.abi as Abi;
 
 export default function AdminDashboard() {
   const { data: walletClient } = useWalletClient();
@@ -26,51 +23,29 @@ export default function AdminDashboard() {
   }, [walletClient]);
 
   // On-chain reads for all escrows
-  const contracts = useMemo(() => {
-    if (escrows.length === 0) return [];
-    const calls: { address: `0x${string}`; abi: Abi; functionName: string; args?: readonly [bigint] }[] = [];
-    for (const e of escrows) {
-      const addr = e.id as `0x${string}`;
-      calls.push({ address: addr, abi, functionName: "funded" });
-      calls.push({ address: addr, abi, functionName: "cancelled" });
-      for (let i = 0; i < e.milestoneCount; i++) {
-        calls.push({ address: addr, abi, functionName: "milestones", args: [BigInt(i)] });
-      }
-    }
-    return calls;
-  }, [escrows]);
-
-  const { data: onChainData } = useReadContracts({
-    contracts,
-    query: { enabled: contracts.length > 0 },
-  });
+  const { statuses } = useEscrowStatuses(escrows);
 
   const stats = useMemo(() => {
     const result = { total: escrows.length, active: 0, completed: 0, disputed: 0, totalUSDC: BigInt(0) };
-    if (!onChainData || escrows.length === 0) return result;
+    if (!statuses || escrows.length === 0) return result;
 
-    let idx = 0;
     for (const e of escrows) {
-      const funded = onChainData[idx]?.result as boolean ?? false; idx++;
-      const cancelled = onChainData[idx]?.result as boolean ?? false; idx++;
+      const s = statuses.get(e.id.toLowerCase());
+      if (!s) continue;
       const milestoneStatuses: string[] = [];
-      for (let i = 0; i < e.milestoneCount; i++) {
-        const r = onChainData[idx]?.result as [bigint, number, string, bigint, string, bigint, string] | undefined;
-        if (r) {
-          const s = getMilestoneStatus(Number(r[1]));
-          milestoneStatuses.push(s);
-          if (s === "DISPUTED") result.disputed++;
-        }
-        idx++;
+      for (const m of s.milestones) {
+        if (!m) continue;
+        milestoneStatuses.push(m.status);
+        if (m.status === "DISPUTED") result.disputed++;
       }
-      const allPaid = milestoneStatuses.length > 0 && milestoneStatuses.every((s) => s === "PAID");
-      if (cancelled) { /* skip */ }
+      const allPaid = milestoneStatuses.length > 0 && milestoneStatuses.every((status) => status === "PAID");
+      if (s.cancelled) { /* skip */ }
       else if (allPaid) result.completed++;
-      else if (funded) result.active++;
+      else if (s.funded) result.active++;
       result.totalUSDC += BigInt(e.totalAmount);
     }
     return result;
-  }, [onChainData, escrows]);
+  }, [statuses, escrows]);
 
   if (loading) {
     return (

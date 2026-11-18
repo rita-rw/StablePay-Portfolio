@@ -1,16 +1,16 @@
 "use client";
 
-import { useAccount, useWalletClient, useReadContracts } from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { formatUnits, type Abi } from "viem";
-import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
+import { formatUnits } from "viem";
 import { fetchUserProjects, fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
-import { getMilestoneStatus, getDisplayStatus, statusBadge, decodeTitle } from "@/lib/formatters";
+import { getDisplayStatus, statusBadge, decodeTitle } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import { useMounted } from "@/hooks/useMounted";
+import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
 
 type Tab = "active" | "completed" | "all";
 const ITEMS_PER_PAGE = 6;
@@ -75,55 +75,31 @@ function ProjectsList() {
   }, [fetchProjects]);
 
   // Read on-chain status for all escrows + milestones in a single multicall
-  const contracts = useMemo(() => {
-    if (escrows.length === 0) return [];
-    const abi = StablePayEscrowABI.abi as Abi;
-    const calls: { address: `0x${string}`; abi: Abi; functionName: string; args?: readonly [bigint] }[] = [];
-    for (const e of escrows) {
-      const addr = e.id as `0x${string}`;
-      calls.push({ address: addr, abi, functionName: "sellerAccepted" });
-      calls.push({ address: addr, abi, functionName: "funded" });
-      calls.push({ address: addr, abi, functionName: "cancelled" });
-      for (let i = 0; i < e.milestoneCount; i++) {
-        calls.push({ address: addr, abi, functionName: "milestones", args: [BigInt(i)] });
-      }
-    }
-    return calls;
-  }, [escrows]);
+  const { statuses } = useEscrowStatuses(escrows);
 
-  const { data: onChainData } = useReadContracts({
-    contracts,
-    query: { enabled: contracts.length > 0 },
-  });
-
-  // Map on-chain results back to escrow IDs
+  // Summarise each escrow's on-chain status for the project cards
   const onChainMap = useMemo(() => {
-    if (!onChainData || onChainData.length === 0) return new Map<string, { sellerAccepted: boolean; funded: boolean; cancelled: boolean; hasDispute: boolean; allPaid: boolean; hasSubmitted: boolean }>();
     const map = new Map<string, { sellerAccepted: boolean; funded: boolean; cancelled: boolean; hasDispute: boolean; allPaid: boolean; hasSubmitted: boolean }>();
-    let idx = 0;
+    if (!statuses) return map;
     for (const e of escrows) {
-      const sellerAccepted = Boolean(onChainData[idx]?.result); idx++;
-      const funded = Boolean(onChainData[idx]?.result); idx++;
-      const cancelled = Boolean(onChainData[idx]?.result); idx++;
+      const s = statuses.get(e.id.toLowerCase());
+      if (!s) continue;
       let hasDispute = false;
       let allPaid = e.milestoneCount > 0;
       let hasSubmitted = false;
-      for (let i = 0; i < e.milestoneCount; i++) {
-        const result = onChainData[idx]?.result as [bigint, number, string, bigint, string, bigint, string] | undefined;
-        if (result) {
-          const status = getMilestoneStatus(Number(result[1]));
-          if (status === "DISPUTED") hasDispute = true;
-          if (status !== "PAID" && status !== "RESOLVED" && status !== "REFUNDED") allPaid = false;
-          if (status === "SUBMITTED" || status === "DISPUTED" || status === "RESOLVED" || status === "PAID") hasSubmitted = true;
-        } else {
+      for (const m of s.milestones) {
+        if (!m) {
           allPaid = false;
+          continue;
         }
-        idx++;
+        if (m.status === "DISPUTED") hasDispute = true;
+        if (m.status !== "PAID" && m.status !== "RESOLVED" && m.status !== "REFUNDED") allPaid = false;
+        if (m.status === "SUBMITTED" || m.status === "DISPUTED" || m.status === "RESOLVED" || m.status === "PAID") hasSubmitted = true;
       }
-      map.set(e.id.toLowerCase(), { sellerAccepted, funded, cancelled, hasDispute, allPaid, hasSubmitted });
+      map.set(e.id.toLowerCase(), { sellerAccepted: s.sellerAccepted, funded: s.funded, cancelled: s.cancelled, hasDispute, allPaid, hasSubmitted });
     }
     return map;
-  }, [onChainData, escrows]);
+  }, [statuses, escrows]);
 
   // Enrich escrows with on-chain status
   const enrichedEscrows = useMemo(() => {

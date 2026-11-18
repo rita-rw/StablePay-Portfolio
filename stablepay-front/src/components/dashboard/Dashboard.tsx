@@ -2,18 +2,16 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { useAccount, useReadContracts, useWalletClient } from "wagmi";
-import { type Abi, formatUnits } from "viem";
+import { useAccount, useWalletClient } from "wagmi";
+import { formatUnits } from "viem";
 import { useUser } from "@/hooks/useUser";
+import { useEscrowStatuses, type EscrowStatus } from "@/hooks/useEscrowStatuses";
 import { fetchUserProjects } from "@/services/projects";
 import { SignatureDeclinedError } from "@/lib/authFetch";
-import { deriveProjectStatus, getMilestoneStatus, decodeTitle, calcFeeBase } from "@/lib/formatters";
+import { deriveProjectStatus, decodeTitle, calcFeeBase } from "@/lib/formatters";
 import { PLATFORM_FEE_BPS } from "@/lib/constants";
 import type { Escrow } from "@/types/escrow";
-import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { Wallet, ArrowDownLeft, Plus, ArrowRight, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
-
-const abi = StablePayEscrowABI.abi as Abi;
 
 type TodoAction = "review" | "dispute" | "fund" | "accept" | "submit";
 
@@ -35,7 +33,7 @@ const ACTION_RANK: Record<TodoAction, number> = {
 
 
 const escrowCache = new Map<string, Escrow[]>();
-let chainCache: { key: string; data: readonly { result?: unknown }[] } | null = null;
+let chainCache: { key: string; statuses: Map<string, EscrowStatus> } | null = null;
 
 function chainKey(list: Escrow[]): string {
   return list.map((escrow) => `${escrow.id.toLowerCase()}:${escrow.milestoneCount}`).join("|");
@@ -82,40 +80,22 @@ export default function Dashboard() {
   }, [address, walletClient]);
 
   // On-chain status reads
-  const contracts = useMemo(() => {
-    if (escrows.length === 0) return [];
-    const calls: { address: `0x${string}`; abi: Abi; functionName: string; args?: readonly [bigint] }[] = [];
-    for (const e of escrows) {
-      const addr = e.id as `0x${string}`;
-      calls.push({ address: addr, abi, functionName: "sellerAccepted" });
-      calls.push({ address: addr, abi, functionName: "funded" });
-      calls.push({ address: addr, abi, functionName: "cancelled" });
-      for (let i = 0; i < e.milestoneCount; i++) {
-        calls.push({ address: addr, abi, functionName: "milestones", args: [BigInt(i)] });
-      }
-    }
-    return calls;
-  }, [escrows]);
-
-  const { data: onChainData, isError: chainError } = useReadContracts({
-    contracts,
-    query: { enabled: contracts.length > 0 },
-  });
+  const { statuses, isError: chainError } = useEscrowStatuses(escrows);
 
   const chainKeyForEscrows = chainKey(escrows);
-  const chainData = onChainData ?? (chainCache?.key === chainKeyForEscrows ? chainCache.data : undefined);
+  const chainStatuses = statuses ?? (chainCache?.key === chainKeyForEscrows ? chainCache.statuses : undefined);
 
-   // Save the latest on-chain reads so the dashboard can show them instantly
+  // Save the latest on-chain reads so the dashboard can show them instantly
   // next time. Done in an effect, not during render, because render must not
   // change anything outside the component.
   useEffect(() => {
-    if (onChainData && escrows.length > 0) {
-      chainCache = { key: chainKeyForEscrows, data: onChainData };
+    if (statuses && escrows.length > 0) {
+      chainCache = { key: chainKeyForEscrows, statuses };
     }
-  }, [onChainData, escrows.length, chainKeyForEscrows]);
+  }, [statuses, escrows.length, chainKeyForEscrows]);
 
   const chainProjects = useMemo(() => {
-    if (!chainData || escrows.length === 0) return [];
+    if (!chainStatuses || escrows.length === 0) return [];
     const me = address?.toLowerCase();
     const enriched: {
       escrow: Escrow;
@@ -126,38 +106,34 @@ export default function Dashboard() {
       received: bigint;
       action: TodoAction | null;
     }[] = [];
-    let idx = 0;
     for (const e of escrows) {
-      const sellerAccepted = Boolean(chainData[idx]?.result); idx++;
-      const funded = Boolean(chainData[idx]?.result); idx++;
-      const cancelled = Boolean(chainData[idx]?.result); idx++;
+      const onChain = chainStatuses.get(e.id.toLowerCase());
+      if (!onChain) continue;
+      const { sellerAccepted, funded, cancelled } = onChain;
       const milestoneStatuses: string[] = [];
       let hasDispute = false;
       let paidOut = BigInt(0);
       let received = BigInt(0);
       const isBuyer = e.buyer.toLowerCase() === me;
       const isSeller = e.seller.toLowerCase() === me;
-      for (let i = 0; i < e.milestoneCount; i++) {
-        const r = chainData[idx]?.result as [bigint, number, string, bigint, string, bigint, string] | undefined;
-        if (r) {
-          const s = getMilestoneStatus(Number(r[1]));
-          milestoneStatuses.push(s);
-          if (s === "DISPUTED") hasDispute = true;
-          const row = e.milestones?.find((m) => m.milestoneIndex === i);
-          const amount = BigInt(r[0]);
-          if (isBuyer) {
-            if (s === "PAID") paidOut += amount;
-            else if (s === "RESOLVED" && row?.sellerAward) paidOut += BigInt(row.sellerAward);
-          }
-          if (isSeller) {
-            if (s === "RESOLVED" && row?.sellerAward) received += sellerNet(BigInt(row.sellerAward));
-            else if (s === "PAID") {
-              const base = row?.disputeOpenedAt != null && row.sellerAward ? BigInt(row.sellerAward) : amount;
-              received += sellerNet(base);
-            }
+      for (let i = 0; i < onChain.milestones.length; i++) {
+        const m = onChain.milestones[i];
+        if (!m) continue;
+        const s = m.status;
+        milestoneStatuses.push(s);
+        if (s === "DISPUTED") hasDispute = true;
+        const row = e.milestones?.find((dbRow) => dbRow.milestoneIndex === i);
+        if (isBuyer) {
+          if (s === "PAID") paidOut += m.amount;
+          else if (s === "RESOLVED" && row?.sellerAward) paidOut += BigInt(row.sellerAward);
+        }
+        if (isSeller) {
+          if (s === "RESOLVED" && row?.sellerAward) received += sellerNet(BigInt(row.sellerAward));
+          else if (s === "PAID") {
+            const base = row?.disputeOpenedAt != null && row.sellerAward ? BigInt(row.sellerAward) : m.amount;
+            received += sellerNet(base);
           }
         }
-        idx++;
       }
       const status = deriveProjectStatus(funded, cancelled, sellerAccepted, milestoneStatuses);
       let action: TodoAction | null = null;
@@ -179,7 +155,7 @@ export default function Dashboard() {
       });
     }
     return enriched;
-  }, [chainData, escrows, address]);
+  }, [chainStatuses, escrows, address]);
 
   const stats = useMemo(() => {
     const result = { active: 0, completed: 0, disputed: 0, paidOut: BigInt(0), received: BigInt(0) };
@@ -203,7 +179,7 @@ export default function Dashboard() {
       });
   }, [chainProjects]);
 
-  if (loading || (escrows.length > 0 && !chainData && !chainError)) {
+  if (loading || (escrows.length > 0 && !chainStatuses && !chainError)) {
     return (
       <div className="flex flex-1 items-center justify-center bg-white">
         <p className="text-zinc-500">Loading dashboard...</p>

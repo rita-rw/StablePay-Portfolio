@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useAccount, useWalletClient, useReadContracts } from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
-import { getMilestoneStatus, shortAddr, decodeTitle } from "@/lib/formatters";
+import { shortAddr, decodeTitle } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import { useMounted } from "@/hooks/useMounted";
+import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
 
 type ProjectGroup = {
   escrowAddress: string;
@@ -49,46 +49,28 @@ export default function AdminPage() {
 
   useEffect(() => { fetchProjects(); }, [fetchProjects]);
 
-  const contracts = useMemo(() => {
-    if (escrows.length === 0) return [];
-    const calls = [];
-    for (const e of escrows) {
-      const addr = e.id as `0x${string}`;
-      for (let i = 0; i < e.milestoneCount; i++) {
-        calls.push({ address: addr, abi: StablePayEscrowABI.abi as never, functionName: "milestones", args: [BigInt(i)] as const });
-      }
-    }
-    return calls;
-  }, [escrows]);
-
-  const { data: onChainData } = useReadContracts({
-    contracts,
-    query: { enabled: contracts.length > 0 },
-  });
+  const { statuses } = useEscrowStatuses(escrows);
 
   const projects = useMemo<ProjectGroup[]>(() => {
-    if (!onChainData || onChainData.length === 0) return [];
+    if (!statuses) return [];
     const result: ProjectGroup[] = [];
-    let idx = 0;
     for (const e of escrows) {
+      const s = statuses.get(e.id.toLowerCase());
+      if (!s) continue;
       let activeDisputeCount = 0;
       let resolvedDisputeCount = 0;
       const disputeDates: string[] = [];
-      for (let i = 0; i < e.milestoneCount; i++) {
-        const r = onChainData[idx]?.result as [bigint, number, string, bigint, string, bigint, string] | undefined;
-        if (r) {
-          const status = getMilestoneStatus(Number(r[1]));
-          const ts = Number(r[5]);
-          const hadDispute = ts > 0;
-          if (status === "DISPUTED") {
-            activeDisputeCount++;
-            if (hadDispute) disputeDates.push(new Date(ts * 1000).toISOString());
-          } else if (status === "RESOLVED" || (hadDispute && (status === "PAID" || status === "REFUNDED"))) {
-            resolvedDisputeCount++;
-            if (hadDispute) disputeDates.push(new Date(ts * 1000).toISOString());
-          }
+      for (const m of s.milestones) {
+        if (!m) continue;
+        const ts = m.disputeOpenedAt;
+        const hadDispute = ts > 0;
+        if (m.status === "DISPUTED") {
+          activeDisputeCount++;
+          if (hadDispute) disputeDates.push(new Date(ts * 1000).toISOString());
+        } else if (m.status === "RESOLVED" || (hadDispute && (m.status === "PAID" || m.status === "REFUNDED"))) {
+          resolvedDisputeCount++;
+          if (hadDispute) disputeDates.push(new Date(ts * 1000).toISOString());
         }
-        idx++;
       }
       if (activeDisputeCount > 0 || resolvedDisputeCount > 0) {
         const oldestDisputeAt = disputeDates.length > 0
@@ -115,7 +97,7 @@ export default function AdminPage() {
       }
     }
     return result;
-  }, [escrows, onChainData]);
+  }, [escrows, statuses]);
 
   const activeProjects = projects.filter((p) => p.activeDisputeCount > 0);
   const resolvedProjects = projects
