@@ -175,7 +175,7 @@ export default function AdminProjectDisputesPage() {
     const { id, milestoneIndex, note } = pendingNoteRef.current;
     pendingNoteRef.current = null;
     void saveResolutionNote(id, milestoneIndex, note);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run only when the resolve tx confirms; saveResolutionNote is recreated every render
   }, [isResolveSuccess]);
 
   useEffect(() => {
