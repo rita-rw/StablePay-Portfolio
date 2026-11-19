@@ -189,3 +189,23 @@ export function milestoneStatusBadge(status: string, hadDispute = false): { labe
 export function getMilestoneStatus(statusCode: number): string {
   return MILESTONE_STATUS_MAP[statusCode] ?? "PENDING";
 }
+
+/** Human-readable label for a project timeline event. */
+export function getEventLabel(type: string, milestoneIndex: number | null): string {
+  const n = milestoneIndex !== null ? milestoneIndex + 1 : "";
+  const labels: Record<string, string> = {
+    project_created: "Project Created",
+    seller_accepted: "Seller Accepted",
+    project_funded: "Project Funded",
+    project_cancelled: "Project Cancelled",
+    project_rejected: "Project Rejected",
+    milestone_submitted: `Milestone ${n} Submitted`,
+    dispute_opened: `Dispute Opened by Buyer on Milestone ${n}`,
+    dispute_escalated: `Escalated to Admin on Milestone ${n}`,
+    milestone_approved: `Milestone ${n} Paid`,
+    milestone_refunded: `Milestone ${n} Refunded`,
+    dispute_resolved: `Dispute Resolved on Milestone ${n}`,
+    dispute_resolved_platform: `Dispute on Milestone ${n} Resolved by StablePay`,
+  };
+  return labels[type] ?? type;
+}

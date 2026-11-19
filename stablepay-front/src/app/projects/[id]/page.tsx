@@ -1,70 +1,21 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, type TextareaHTMLAttributes } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { formatUnits, keccak256, toHex, type Abi } from "viem";
+import { erc20Abi, formatUnits, keccak256, toHex, type Abi } from "viem";
 import { Pencil, Copy, Check } from "lucide-react";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase, getEventLabel } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
+import { GrowingTextarea } from "@/components/shared/GrowingTextarea";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
-
-function GrowingTextarea({
-  value,
-  className,
-  ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const next = Math.min(el.scrollHeight, 160);
-    el.style.height = `${next}px`;
-    el.style.overflowY = el.scrollHeight > 160 ? "auto" : "hidden";
-  }, [value]);
-
-  return (
-    <textarea
-      ref={ref}
-      rows={1}
-      value={value}
-      {...props}
-      className={`max-h-40 resize-none break-words ${className ?? ""}`}
-    />
-  );
-}
-
-const ERC20_ABI = [
-  {
-    type: "function",
-    name: "approve",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "nonpayable",
-  },
-  {
-    type: "function",
-    name: "allowance",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-  },
-] as const;
 
 type ProjectEvent = {
   type: string;
@@ -91,26 +42,6 @@ async function postWithRetry(url: string, body: object, attempts = 3): Promise<b
   }
   return false;
 }
-
-function getEventLabel(type: string, milestoneIndex: number | null): string {
-  const n = milestoneIndex !== null ? milestoneIndex + 1 : "";
-  const labels: Record<string, string> = {
-    project_created: "Project Created",
-    seller_accepted: "Seller Accepted",
-    project_funded: "Project Funded",
-    project_cancelled: "Project Cancelled",
-    project_rejected: "Project Rejected",
-    milestone_submitted: `Milestone ${n} Submitted`,
-    dispute_opened: `Dispute Opened by Buyer on Milestone ${n}`,
-    dispute_escalated: `Escalated to Admin on Milestone ${n}`,
-    milestone_approved: `Milestone ${n} Paid`,
-    milestone_refunded: `Milestone ${n} Refunded`,
-    dispute_resolved: `Dispute Resolved on Milestone ${n}`,
-    dispute_resolved_platform: `Dispute on Milestone ${n} Resolved by StablePay`,
-  };
-  return labels[type] ?? type;
-}
-
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -484,7 +415,7 @@ export default function ProjectDetailPage() {
 
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: USDC_ADDRESS,
-    abi: ERC20_ABI,
+    abi: erc20Abi,
     functionName: "allowance",
     args: address && escrowAddress ? [address, escrowAddress] : undefined,
   });
@@ -1072,7 +1003,7 @@ export default function ProjectDetailPage() {
     if (!totalAmount) return;
     writeApprove({
       address: USDC_ADDRESS,
-      abi: ERC20_ABI,
+      abi: erc20Abi,
       functionName: "approve",
       args: [escrowAddress, totalAmount as bigint],
     });
