@@ -16,6 +16,9 @@ import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { GrowingTextarea } from "@/components/shared/GrowingTextarea";
 import { ProjectTimeline, type ProjectEvent } from "@/components/project/ProjectTimeline";
 import { ProjectInfoCard } from "@/components/project/ProjectInfoCard";
+import { FundProject } from "@/components/project/FundProject";
+import { ProjectInvitation } from "@/components/project/ProjectInvitation";
+import { type TxAction } from "@/lib/tx";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
 
@@ -1228,6 +1231,16 @@ export default function ProjectDetailPage() {
     ? formatUnits(totalAmount as bigint, 6)
     : "...";
 
+  const hasAccepted = Boolean(sellerAccepted) || isAcceptSuccess;
+  const hasFunded = Boolean(isFunded) || isFundSuccess;
+  const isClosed = Boolean(isCancelled) || isCancelSuccess || isRejectSuccess;
+
+  const acceptTx: TxAction = { onClick: handleAcceptProject, isPending: isAcceptPending, isConfirming: isAcceptConfirming, error: acceptError };
+  const rejectTx: TxAction = { onClick: handleRejectProject, isPending: isRejectPending, isConfirming: isRejectConfirming, error: rejectError };
+  const approveTx: TxAction = { onClick: handleApprove, isPending: isApprovePending, isConfirming: isApproveConfirming, error: approveError };
+  const fundTx: TxAction = { onClick: handleFund, isPending: isFundPending, isConfirming: isFundConfirming, error: fundError };
+  const cancelTx: TxAction = { onClick: handleCancelEscrow, isPending: isCancelPending, isConfirming: isCancelConfirming, error: cancelError };
+
   return (
     <div className="min-h-screen bg-zinc-50">
     <div className="mx-auto max-w-4xl px-4 py-6">
@@ -1313,7 +1326,7 @@ export default function ProjectDetailPage() {
         milestoneCount={Number(milestoneCount)}
       />
 
-      {isSeller && !sellerAccepted && !isAcceptSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && userChecked && !isRegistered && (
+      {isSeller && !hasAccepted && !isClosed && userChecked && !isRegistered && (
         <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
           <h2 className="mb-2 text-lg font-semibold">Registration Required</h2>
           <p className="mb-4 text-sm text-zinc-800">
@@ -1328,7 +1341,7 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {isBuyer && !sellerAccepted && !isAcceptSuccess && !isFunded && !isFundSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && (
+      {isBuyer && !hasAccepted && !hasFunded && !isClosed && (
         <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
           <p className="text-sm text-orange-700">
             Waiting for the seller to accept this project before you can fund it.
@@ -1336,7 +1349,7 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {isSeller && (sellerAccepted || isAcceptSuccess) && !isFunded && !isFundSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && (
+      {isSeller && hasAccepted && !hasFunded && !isClosed && (
         <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
           <p className="text-sm text-orange-700">
             You accepted this project. Waiting for the buyer to fund the escrow before you can start work.
@@ -1344,92 +1357,14 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {isBuyer && (sellerAccepted || isAcceptSuccess) && !isFunded && !isFundSuccess && !isCancelled && !isCancelSuccess && (
-        <div className="mb-6 space-y-4">
-          <h2 className="text-lg font-semibold">Fund this Project</h2>
-          <p className="text-sm text-zinc-800">
-            Funding requires two transactions: first you approve USDC transfer,
-            then you deposit funds into the escrow contract.
-          </p>
-
-          <div className="space-y-3">
-            <div className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="font-medium">Step 1: Approve USDC</p>
-                {(hasEnoughAllowance || isApproveSuccess) && (
-                  <span className="text-sm text-emerald-600">✓ Approved</span>
-                )}
-              </div>
-              <p className="mb-3 text-xs text-zinc-700">
-                Allow the escrow contract to transfer {displayAmount} USDC from
-                your wallet.
-              </p>
-              {!hasEnoughAllowance && !isApproveSuccess && (
-                <button
-                  onClick={handleApprove}
-                  disabled={isApprovePending || isApproveConfirming}
-                  className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
-                >
-                  {isApprovePending
-                    ? "Confirm in Wallet..."
-                    : isApproveConfirming
-                      ? "Waiting for Confirmation..."
-                      : `Approve ${displayAmount} USDC`}
-                </button>
-              )}
-              {approveError && (
-                <p className="mt-2 text-xs text-red-500">
-                  {parseContractError(approveError)}
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]">
-              <p className="mb-2 font-medium">Step 2: Fund Escrow</p>
-              <p className="mb-3 text-xs text-zinc-700">
-                Deposit {displayAmount} USDC into the escrow contract. Funds are
-                locked until milestones are approved.
-              </p>
-              <button
-                onClick={handleFund}
-                disabled={
-                  isFundPending ||
-                  isFundConfirming ||
-                  (!hasEnoughAllowance && !isApproveSuccess)
-                }
-                className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
-              >
-                {isFundPending
-                  ? "Confirm in Wallet..."
-                  : isFundConfirming
-                    ? "Waiting for Confirmation..."
-                    : `Fund ${displayAmount} USDC`}
-              </button>
-              {fundError && (
-                <p className="mt-2 text-xs text-red-500">
-                  {parseContractError(fundError)}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 text-center">
-            <button
-              onClick={handleCancelEscrow}
-              disabled={isCancelPending || isCancelConfirming}
-              className="text-sm text-zinc-500 underline transition-colors hover:text-red-500 disabled:opacity-50"
-            >
-              {isCancelPending
-                ? "Confirm in Wallet..."
-                : isCancelConfirming
-                ? "Cancelling..."
-                : "Cancel this project"}
-            </button>
-            {cancelError && (
-              <p className="mt-1 text-xs text-red-500">{parseContractError(cancelError)}</p>
-            )}
-          </div>
-        </div>
+      {isBuyer && hasAccepted && !hasFunded && !isClosed && (
+        <FundProject
+          amount={displayAmount}
+          isApproved={hasEnoughAllowance || isApproveSuccess}
+          approve={approveTx}
+          fund={fundTx}
+          cancel={cancelTx}
+        />
       )}
 
       {/* Tabs */}
@@ -1483,43 +1418,8 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {isSeller && !sellerAccepted && !isAcceptSuccess && !isCancelled && !isCancelSuccess && !isRejectSuccess && userChecked && isRegistered && (
-        <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
-          <h2 className="mb-2 text-lg font-semibold">Project Invitation</h2>
-          <p className="mb-4 text-sm text-zinc-800">
-            You have been invited to this project. Accept to allow the buyer to fund the escrow, or reject to cancel.
-          </p>
-          <div className="flex gap-3">
-            <button
-              onClick={handleAcceptProject}
-              disabled={isAcceptPending || isAcceptConfirming}
-              className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 disabled:opacity-50"
-            >
-              {isAcceptPending
-                ? "Confirm in Wallet..."
-                : isAcceptConfirming
-                ? "Waiting for Confirmation..."
-                : "Accept Project"}
-            </button>
-            <button
-              onClick={handleRejectProject}
-              disabled={isRejectPending || isRejectConfirming}
-              className="flex-1 rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-            >
-              {isRejectPending
-                ? "Confirm in Wallet..."
-                : isRejectConfirming
-                ? "Waiting for Confirmation..."
-                : "Reject Project"}
-            </button>
-          </div>
-          {acceptError && (
-            <p className="mt-2 text-xs text-red-500">{parseContractError(acceptError)}</p>
-          )}
-          {rejectError && (
-            <p className="mt-2 text-xs text-red-500">{parseContractError(rejectError)}</p>
-          )}
-        </div>
+      {isSeller && !hasAccepted && !isClosed && userChecked && isRegistered && (
+        <ProjectInvitation accept={acceptTx} reject={rejectTx} />
       )}
 
       {isBuyer && (isFunded || isFundSuccess) && allMilestonesPending && !isCancelled && !isCancelSuccess && (
