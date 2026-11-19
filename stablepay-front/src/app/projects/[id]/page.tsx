@@ -11,17 +11,12 @@ import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, BASESCAN_URL, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase, getEventLabel } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { GrowingTextarea } from "@/components/shared/GrowingTextarea";
+import { ProjectTimeline, type ProjectEvent } from "@/components/project/ProjectTimeline";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
-
-type ProjectEvent = {
-  type: string;
-  timestamp: string;
-  milestoneIndex: number | null;
-};
 
 /**
  * Saves the text behind an on-chain hash (delivery, dispute, escalation). No signature:
@@ -1510,72 +1505,7 @@ export default function ProjectDetailPage() {
         ))}
       </div>
 
-      {activeTab === "timeline" && events.length > 0 && (
-        <div className="rounded-2xl border border-zinc-300 bg-white p-6 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-6">Project Timeline</h2>
-          <ol className="relative">
-            {(() => {
-              const isProjectComplete =
-                milestones.length > 0 &&
-                milestones.every((m) => ["PAID", "RESOLVED", "REFUNDED"].includes(m.status));
-              return (
-                <>
-                  {events.map((event, i) => {
-                    const isLast = i === events.length - 1 && !isProjectComplete;
-                    const milestoneDescription = event.milestoneIndex === null
-                      ? ""
-                      : milestones.find((m) => m.milestoneIndex === event.milestoneIndex)?.label?.trim() ?? "";
-                    return (
-                      <li key={i} className="flex gap-4 relative">
-                        {!isLast && (
-                          <div className="absolute left-[9px] top-5 bottom-0 w-px bg-zinc-200" />
-                        )}
-                        <div className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center z-10 ${
-                          event.type === "created" ? "border-zinc-300 bg-white"
-                          : event.type === "cancelled" || event.type === "project_cancelled" || event.type === "project_rejected" || event.type === "disputed" ? "border-red-300 bg-red-50"
-                          : "border-primary bg-primary/10"
-                        }`}>
-                          <div className={`h-2 w-2 rounded-full ${
-                            event.type === "created" ? "bg-zinc-300"
-                            : event.type === "cancelled" || event.type === "project_cancelled" || event.type === "project_rejected" || event.type === "disputed" ? "bg-red-400"
-                            : "bg-primary"
-                          }`} />
-                        </div>
-                        <div className={`pb-6 ${isLast ? "pb-0" : ""}`}>
-                          <p className="text-sm font-semibold text-zinc-900 leading-tight">
-                            {getEventLabel(event.type, event.milestoneIndex)}
-                          </p>
-                          {milestoneDescription && (
-                            <p className="text-xs text-zinc-600 mt-0.5">
-                              {milestoneDescription}
-                            </p>
-                          )}
-                          <p className="text-xs text-zinc-500 mt-0.5">
-                            {new Date(event.timestamp).toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" })}
-                          </p>
-                        </div>
-                      </li>
-                    );
-                  })}
-                  {isProjectComplete && (
-                    <li className="flex gap-4 relative">
-                      <div className="mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 border-emerald-400 bg-emerald-50 flex items-center justify-center z-10">
-                        <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                      </div>
-                      <div className="pb-0">
-                        <p className="text-sm font-semibold text-emerald-700 leading-tight">Project Completed</p>
-                        <p className="text-xs text-zinc-500 mt-0.5">
-                          {new Date(events[events.length - 1].timestamp).toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" })}
-                        </p>
-                      </div>
-                    </li>
-                  )}
-                </>
-              );
-            })()}
-          </ol>
-        </div>
-      )}
+      {activeTab === "timeline" && <ProjectTimeline events={events} milestones={milestones} />}
 
       {activeTab === "overview" && (<>
 
