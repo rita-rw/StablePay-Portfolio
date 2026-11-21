@@ -18,7 +18,7 @@ import { ProjectTimeline, type ProjectEvent } from "@/components/project/Project
 import { ProjectInfoCard } from "@/components/project/ProjectInfoCard";
 import { FundProject } from "@/components/project/FundProject";
 import { ProjectInvitation } from "@/components/project/ProjectInvitation";
-import { MilestonePayment } from "@/components/project/MilestonePayment";
+import { MilestoneHistory } from "@/components/project/MilestoneHistory";
 import { type TxAction } from "@/lib/tx";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
@@ -1533,125 +1533,23 @@ export default function ProjectDetailPage() {
                   </span>
                 )}
               </div>
-              {(() => {
-                const hadDispute = !!m.disputeOpenedAt;
-                const isDisputeOutcome =
-                  displayStatus === "RESOLVED" ||
-                  ((displayStatus === "PAID" || displayStatus === "REFUNDED") && hadDispute);
-
-                const disputeReason = m.disputeReason ?? optimisticDisputes[m.milestoneIndex];
-                const disputeOpenedBy = m.disputeOpenedBy ?? (locallyDisputed ? address : undefined);
-                const disputeOpenedAt = m.disputeOpenedAt ?? (locallyDisputed ? new Date().toISOString() : undefined);
-                const showDisputeBox =
-                  (displayStatus === "DISPUTED" || isDisputeOutcome || locallyDisputed) &&
-                  (processingAs == null || processingAs === "DISPUTED");
-                const disputeBox = showDisputeBox ? (
-                  <div className="mt-3 border-l-2 border-red-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md">
-                    <p className="mb-1.5 font-semibold text-red-600 uppercase tracking-wider text-[10px]">Dispute</p>
-                    {disputeOpenedBy && (() => {
-                      const isByBuyer = disputeOpenedBy.toLowerCase() === (buyer as string | undefined)?.toLowerCase();
-                      const role = isByBuyer ? "Buyer" : "Seller";
-                      const company = isByBuyer ? escrowMeta?.buyerCompany : escrowMeta?.sellerCompany;
-                      return (
-                        <p className="mb-1 text-zinc-700">
-                          <span className="font-medium text-zinc-600">Opened by ({role}):</span>{" "}
-                          {company ?? `${disputeOpenedBy.slice(0, 6)}...${disputeOpenedBy.slice(-4)}`}
-                        </p>
-                      );
-                    })()}
-                    {disputeReason && (
-                      <p className="mb-1 text-zinc-800">
-                        <span className="font-medium text-zinc-600">Reason:</span> {disputeReason}
-                      </p>
-                    )}
-                    {(savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse) && (
-                      <p className="mb-1 whitespace-pre-wrap break-words text-zinc-800">
-                        <span className="font-medium text-zinc-600">Seller&apos;s response:</span>{" "}
-                        {savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse}
-                      </p>
-                    )}
-                    {disputeOpenedAt && (
-                      <p className="text-zinc-700">
-                        <span className="font-medium text-zinc-600">Opened:</span>{" "}
-                        {new Date(disputeOpenedAt).toLocaleDateString()}
-                      </p>
-                    )}
-                    {isDisputeOutcome && m.paidAt && (
-                      <p className="mt-1 text-zinc-700">
-                        <span className="font-medium text-zinc-600">Settled:</span>{" "}
-                        {new Date(m.paidAt).toLocaleDateString()}
-                      </p>
-                    )}
-                    {isDisputeOutcome && m.resolutionNote && (
-                      <p className="mt-1 whitespace-pre-wrap break-words text-zinc-800">
-                        <span className="font-medium text-zinc-600">Decision by StablePay:</span> {m.resolutionNote}
-                      </p>
-                    )}
-                  </div>
-                ) : null;
-
-
-                return (
-                  <>
-                    {(m.deliveryReference || optimisticDeliveries[m.milestoneIndex]) && (
-                      <div className="mt-3 rounded-lg border border-zinc-900 bg-zinc-50 p-3 text-xs">
-                        <p className="mb-1 font-semibold text-zinc-500 uppercase tracking-wider text-[10px]">Seller delivery message</p>
-                        <p className="whitespace-pre-wrap break-words text-zinc-800">{m.deliveryReference ?? optimisticDeliveries[m.milestoneIndex]}</p>
-                      </div>
-                    )}
-                    {(displayStatus === "ESCALATED" || processingMilestones.get(m.milestoneIndex) === "ESCALATED") && (
-                      <div className="mt-3 border-l-2 border-red-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md space-y-1">
-                        <p className="mb-1.5 font-semibold text-red-600 uppercase tracking-wider text-[10px]">Escalated</p>
-                        <p className="text-zinc-700">
-                          <span className="font-medium text-zinc-600">Buyer opened dispute:</span>{" "}
-                          {escrowMeta?.buyerCompany
-                            ?? (buyer
-                              ? `${(buyer as string).slice(0, 6)}...${(buyer as string).slice(-4)}`
-                              : "Buyer")}
-                          {m.disputeOpenedAt && <span className="text-zinc-400"> · {new Date(m.disputeOpenedAt).toLocaleDateString()}</span>}
-                        </p>
-                        {(m.disputeReason ?? optimisticDisputes[m.milestoneIndex]) && (
-                          <p className="text-zinc-800">
-                            <span className="font-medium text-zinc-600">Dispute reason:</span> {m.disputeReason ?? optimisticDisputes[m.milestoneIndex]}
-                          </p>
-                        )}
-                        <p className="text-zinc-700">
-                          <span className="font-medium text-zinc-600">Seller escalated to admin</span>
-                          {m.disputeOpenedAt && <span className="text-zinc-400"> · {new Date(m.disputeOpenedAt).toLocaleDateString()}</span>}
-                        </p>
-                        {(m.escalationReason ?? escalationReasons[m.milestoneIndex]) && (
-                          <p className="text-zinc-800">
-                            <span className="font-medium text-zinc-600">Escalation reason:</span>{" "}
-                            {m.escalationReason ?? escalationReasons[m.milestoneIndex]}
-                          </p>
-                        )}
-                        <p className="text-zinc-500 italic">The platform is reviewing and will resolve this dispute.</p>
-                      </div>
-                    )}
-                    {disputeBox}
-                    {displayStatus === "PAID" && !hadDispute && (locallyPaid || !processingMilestones.has(m.milestoneIndex)) && (
-                      <div className="mt-3 border-l-2 border-blue-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md">
-                        <p className="font-semibold text-zinc-500 uppercase tracking-wider text-[10px] mb-1">Approval</p>
-                        <p className="text-zinc-800">
-                          {m.autoApproved === true
-                            ? "Auto-approved. The seller claimed the payment after the approval window ended."
-                            : m.autoApproved === false
-                              ? "Approved by the buyer. Payment released to the seller."
-                              : "Payment released to the seller."}
-                        </p>
-                      </div>
-                    )}
-                    {["PAID", "REFUNDED", "RESOLVED"].includes(displayStatus) && (
-                      <MilestonePayment
-                        amount={m.amount}
-                        status={displayStatus}
-                        hadDispute={hadDispute}
-                        sellerAward={m.sellerAward ?? onChainAwards[m.milestoneIndex]}
-                      />
-                    )}
-                  </>
-                );
-              })()}
+              <MilestoneHistory
+                milestone={m}
+                status={displayStatus}
+                processingAs={processingAs}
+                locallyPaid={locallyPaid}
+                locallyDisputed={locallyDisputed}
+                deliveryText={m.deliveryReference || optimisticDeliveries[m.milestoneIndex]}
+                disputeReason={m.disputeReason ?? optimisticDisputes[m.milestoneIndex]}
+                disputeOpenedBy={m.disputeOpenedBy ?? (locallyDisputed ? address : undefined)}
+                disputeOpenedAt={m.disputeOpenedAt ?? (locallyDisputed ? new Date().toISOString() : undefined)}
+                sellerResponse={savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse}
+                escalationReason={m.escalationReason ?? escalationReasons[m.milestoneIndex]}
+                sellerAward={m.sellerAward ?? onChainAwards[m.milestoneIndex]}
+                buyer={buyer as string | undefined}
+                buyerCompany={escrowMeta?.buyerCompany}
+                sellerCompany={escrowMeta?.sellerCompany}
+              />
               {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && !locallyDisputed && !locallyPaid && (
                 <div className="mt-3 space-y-2">
                   {(() => {
