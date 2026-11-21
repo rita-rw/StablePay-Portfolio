@@ -74,6 +74,7 @@ export default function ProjectDetailPage() {
     disputeReason?: string | null;
     disputeOpenedAt?: string | null;
     disputeOpenedBy?: string | null;
+    disputeEscalatedAt?: string | null;
     escalationReason?: string | null;
     sellerResponse?: string | null;
     resolutionNote?: string | null;

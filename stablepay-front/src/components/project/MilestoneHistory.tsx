@@ -4,6 +4,7 @@ type MilestoneHistoryProps = {
   milestone: {
     amount: string;
     disputeOpenedAt?: string | null;
+    disputeEscalatedAt?: string | null;
     paidAt?: string | null;
     resolutionNote?: string | null;
     autoApproved?: boolean | null;
@@ -80,7 +81,7 @@ export function MilestoneHistory({
           )}
           <p className="text-zinc-700">
             <span className="font-medium text-zinc-600">Seller escalated to admin</span>
-            {m.disputeOpenedAt && <span className="text-zinc-400"> · {new Date(m.disputeOpenedAt).toLocaleDateString()}</span>}
+            {m.disputeEscalatedAt && <span className="text-zinc-400"> · {new Date(m.disputeEscalatedAt).toLocaleDateString()}</span>}
           </p>
           {escalationReason && (
             <p className="text-zinc-800">
