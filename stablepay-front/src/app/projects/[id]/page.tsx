@@ -11,7 +11,7 @@ import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase, formatAutoRelease } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { GrowingTextarea } from "@/components/shared/GrowingTextarea";
 import { ProjectTimeline, type ProjectEvent } from "@/components/project/ProjectTimeline";
@@ -19,6 +19,7 @@ import { ProjectInfoCard } from "@/components/project/ProjectInfoCard";
 import { FundProject } from "@/components/project/FundProject";
 import { ProjectInvitation } from "@/components/project/ProjectInvitation";
 import { MilestoneHistory } from "@/components/project/MilestoneHistory";
+import { BuyerMilestoneActions } from "@/components/project/BuyerMilestoneActions";
 import { type TxAction } from "@/lib/tx";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
@@ -1085,10 +1086,6 @@ export default function ProjectDetailPage() {
     return new Date(submitted.getTime() + autoApprovalMs);
   }
 
-  function formatAutoRelease(date: Date): string {
-    return date.toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" });
-  }
-
   function isDisputeResubmitWindow(disputeOpenedAt: string | null | undefined): boolean {
     if (!disputeOpenedAt || correctionWindowMs <= 0) return false;
     return now - new Date(disputeOpenedAt).getTime() < correctionWindowMs;
@@ -1511,8 +1508,7 @@ export default function ProjectDetailPage() {
             const milestoneBadge = milestoneStatusBadge(badgeStatus, !!m.disputeOpenedAt);
             const submittingThis =
               (isSubmitPending || isSubmitConfirming) && submitIndex === m.milestoneIndex;
-            const disputingThis =
-              (isOpenDisputePending || isOpenDisputeConfirming) && disputeIndex === m.milestoneIndex;
+            const approvingThis = approveIndex === m.milestoneIndex;
             return (
             <div
               key={m.milestoneIndex}
@@ -1552,94 +1548,28 @@ export default function ProjectDetailPage() {
                 sellerCompany={escrowMeta?.sellerCompany}
               />
               {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && !locallyDisputed && !locallyPaid && (
-                <div className="mt-3 space-y-2">
-                  {(() => {
-                    const releaseAt = autoReleaseAt(m.submittedAt);
-                    if (!releaseAt) return null;
-                    const ready = releaseAt.getTime() <= now;
-                    return (
-                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                        {ready
-                          ? "The approval window has ended. The seller can now claim this payment."
-                          : `If you don't approve or dispute, this payment will be released to the seller automatically on ${formatAutoRelease(releaseAt)}.`}
-                      </p>
-                    );
-                  })()}
-                  {!isAutoApprovalReady(m.submittedAt) && (
-                    <>
-                      {(() => {
-                        const isThisMilestone = approveIndex === m.milestoneIndex;
-                        const isBusy = isApproveMilestonePending || isApproveMilestoneConfirming;
-                        // Hide button on other milestones while one is being approved
-                        if (isBusy && !isThisMilestone) return null;
-                        return (
-                          <button
-                            onClick={() => handleApproveMilestone(m.milestoneIndex)}
-                            disabled={isBusy}
-                            className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 disabled:opacity-50"
-                          >
-                            {isApproveMilestonePending && isThisMilestone
-                              ? "Confirm in Wallet..."
-                              : isApproveMilestoneConfirming && isThisMilestone
-                              ? "Waiting for Confirmation..."
-                              : "Approve & Release Payment"}
-                          </button>
-                        );
-                      })()}
-                      {approveMilestoneError && (
-                        <p className="text-xs text-red-500">{parseContractError(approveMilestoneError)}</p>
-                      )}
-                      <div className="space-y-2">
-                        {!disputeExpanded[m.milestoneIndex] ? (
-                          <button
-                            onClick={() => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: true }))}
-                            className="w-full rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
-                          >
-                            Open Dispute
-                          </button>
-                        ) : (
-                          <div className="rounded-lg border border-red-500 bg-white p-3 space-y-2">
-                            <p className="text-xs font-semibold text-red-600 uppercase tracking-wider">Open Dispute</p>
-                            <textarea
-                              value={disputeInputs[m.milestoneIndex] ?? ""}
-                              onChange={(e) =>
-                                setDisputeInputs((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))
-                              }
-                              placeholder="Dispute reason (e.g. work not delivered as agreed)"
-                              maxLength={500}
-                              rows={3}
-                              disabled={disputingThis}
-                              className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200 resize-none disabled:opacity-60"
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: false }))}
-                                disabled={disputingThis}
-                                className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={() => handleOpenDispute(m.milestoneIndex)}
-                                disabled={!disputeInputs[m.milestoneIndex]?.trim() || isOpenDisputePending || isOpenDisputeConfirming}
-                                className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-                              >
-                                {isOpenDisputePending && disputeIndex === m.milestoneIndex
-                                  ? "Confirm in Wallet..."
-                                  : isOpenDisputeConfirming && disputeIndex === m.milestoneIndex
-                                  ? "Waiting..."
-                                  : "Confirm Dispute"}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {openDisputeError && (
-                          <p className="text-xs text-red-500">{parseContractError(openDisputeError)}</p>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
+                <BuyerMilestoneActions
+                  releaseAt={autoReleaseAt(m.submittedAt)}
+                  now={now}
+                  approve={{
+                    onClick: () => handleApproveMilestone(m.milestoneIndex),
+                    isPending: isApproveMilestonePending && approvingThis,
+                    isConfirming: isApproveMilestoneConfirming && approvingThis,
+                    error: approveMilestoneError,
+                  }}
+                  approveBusyElsewhere={(isApproveMilestonePending || isApproveMilestoneConfirming) && !approvingThis}
+                  dispute={{
+                    onClick: () => handleOpenDispute(m.milestoneIndex),
+                    isPending: isOpenDisputePending && disputeIndex === m.milestoneIndex,
+                    isConfirming: isOpenDisputeConfirming && disputeIndex === m.milestoneIndex,
+                    error: openDisputeError,
+                  }}
+                  disputeBusyElsewhere={(isOpenDisputePending || isOpenDisputeConfirming) && disputeIndex !== m.milestoneIndex}
+                  disputeOpen={!!disputeExpanded[m.milestoneIndex]}
+                  onDisputeOpenChange={(open) => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: open }))}
+                  disputeReason={disputeInputs[m.milestoneIndex] ?? ""}
+                  onDisputeReasonChange={(reason) => setDisputeInputs((prev) => ({ ...prev, [m.milestoneIndex]: reason }))}
+                />
               )}
               {isSeller &&
                 (displayStatus === "SUBMITTED" || locallySubmitted) &&

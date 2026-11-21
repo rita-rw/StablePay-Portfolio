@@ -10,6 +10,11 @@ export function shortAddr(addr: string): string {
  * Avoids the float-rounding drift of `parseFloat(formatUnits(...)).toFixed(2)`,
  * which silently drops the sub-cent remainder USDC's 6 decimals can carry.
  */
+/** Date and time of an automatic payment release, e.g. "28 nov. 2026 14:51". */
+export function formatAutoRelease(date: Date): string {
+  return date.toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" });
+}
+
 export function formatUSDC(baseUnits: bigint): string {
   const negative = baseUnits < 0n;
   const abs = negative ? -baseUnits : baseUnits;
