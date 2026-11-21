@@ -10,6 +10,11 @@ export function shortAddr(addr: string): string {
  * Avoids the float-rounding drift of `parseFloat(formatUnits(...)).toFixed(2)`,
  * which silently drops the sub-cent remainder USDC's 6 decimals can carry.
  */
+/** "1 day" / "7 days". */
+export function dayLabel(days: number): string {
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 /** One date format for the whole app, e.g. "21 Nov 2026". */
 export function formatDate(value: string | number | Date): string {
   return new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });

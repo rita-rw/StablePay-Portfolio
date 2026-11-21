@@ -11,15 +11,18 @@ import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase, formatDateTime } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
-import { GrowingTextarea } from "@/components/shared/GrowingTextarea";
 import { ProjectTimeline, type ProjectEvent } from "@/components/project/ProjectTimeline";
 import { ProjectInfoCard } from "@/components/project/ProjectInfoCard";
 import { FundProject } from "@/components/project/FundProject";
 import { ProjectInvitation } from "@/components/project/ProjectInvitation";
 import { MilestoneHistory } from "@/components/project/MilestoneHistory";
 import { BuyerMilestoneActions } from "@/components/project/BuyerMilestoneActions";
+import { SellerAwaitingApproval } from "@/components/project/SellerAwaitingApproval";
+import { DeliveryForm } from "@/components/project/DeliveryForm";
+import { EscalateDispute } from "@/components/project/EscalateDispute";
+import { DisputeResponseForm } from "@/components/project/DisputeResponseForm";
 import { type TxAction } from "@/lib/tx";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
@@ -1070,15 +1073,6 @@ export default function ProjectDetailPage() {
   const disputeTimeoutMs = disputeTimeoutDays * dayMs;
   const correctionWindowMs = correctionWindowDays * dayMs;
 
-  function dayLabel(days: number): string {
-    return `${days} day${days === 1 ? "" : "s"}`;
-  }
-
-  function isAutoApprovalReady(submittedAt: string | null | undefined): boolean {
-    if (!submittedAt || autoApprovalMs <= 0) return false;
-    return now - new Date(submittedAt).getTime() >= autoApprovalMs;
-  }
-
   function autoReleaseAt(submittedAt: string | null | undefined): Date | null {
     if (!submittedAt || autoApprovalMs <= 0) return null;
     const submitted = new Date(submittedAt);
@@ -1506,8 +1500,13 @@ export default function ProjectDetailPage() {
               ? "DISPUTED"
               : displayStatus;
             const milestoneBadge = milestoneStatusBadge(badgeStatus, !!m.disputeOpenedAt);
-            const submittingThis =
-              (isSubmitPending || isSubmitConfirming) && submitIndex === m.milestoneIndex;
+            // Seller's options when the buyer has disputed this milestone
+            const sellerCanAnswerDispute =
+              isSeller &&
+              displayStatus === "DISPUTED" &&
+              !processingMilestones.has(m.milestoneIndex) &&
+              m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase();
+            const inCorrectionWindow = isDisputeResubmitWindow(m.disputeOpenedAt);
             const approvingThis = approveIndex === m.milestoneIndex;
             return (
             <div
@@ -1575,208 +1574,84 @@ export default function ProjectDetailPage() {
                 (displayStatus === "SUBMITTED" || locallySubmitted) &&
                 !locallyPaid &&
                 (processingAs == null || processingAs === "SUBMITTED") && (
-                <div className="mt-3 space-y-2">
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                    <p className="text-sm font-medium text-blue-800">Delivery submitted</p>
-                    <p className="text-xs text-blue-600">
-                      {(() => {
-                        const releaseAt = autoReleaseAt(m.submittedAt);
-                        if (!releaseAt) {
-                          return `Waiting for buyer approval — auto-approval available in ${dayLabel(autoApprovalDays)}`;
-                        }
-                        if (releaseAt.getTime() <= now) {
-                          return "The approval window has ended. You can release this payment.";
-                        }
-                        return `Waiting for buyer approval. You can release this payment automatically on ${formatDateTime(releaseAt)}.`;
-                      })()}
-                    </p>
-                  </div>
-                  {isAutoApprovalReady(m.submittedAt) && (
-                    <button
-                      onClick={() => handleClaimAutoApproval(m.milestoneIndex)}
-                      disabled={isClaimPending || isClaimConfirming}
-                      className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
-                    >
-                      {isClaimPending && claimIndex === m.milestoneIndex
-                        ? "Confirm in Wallet..."
-                        : isClaimConfirming && claimIndex === m.milestoneIndex
-                        ? "Waiting for Confirmation..."
-                        : "Claim Payment (Auto-approved)"}
-                    </button>
-                  )}
-                  {claimError && (
-                    <p className="mt-1 text-xs text-red-500">{parseContractError(claimError)}</p>
-                  )}
-                </div>
+                <SellerAwaitingApproval
+                  releaseAt={autoReleaseAt(m.submittedAt)}
+                  now={now}
+                  autoApprovalDays={autoApprovalDays}
+                  claim={{
+                    onClick: () => handleClaimAutoApproval(m.milestoneIndex),
+                    isPending: isClaimPending && claimIndex === m.milestoneIndex,
+                    isConfirming: isClaimConfirming && claimIndex === m.milestoneIndex,
+                    error: claimError,
+                  }}
+                  claimBusyElsewhere={(isClaimPending || isClaimConfirming) && claimIndex !== m.milestoneIndex}
+                />
               )}
               {isSeller && displayStatus === "PENDING" && !processingMilestones.has(m.milestoneIndex) && !locallySubmitted && (
-                <div className="mt-3 space-y-2">
-                  <GrowingTextarea
-                    placeholder="Delivery reference (URL, IPFS hash, description...)"
-                    value={deliveryInputs[m.milestoneIndex] ?? ""}
-                    onChange={(e) =>
-                      setDeliveryInputs((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))
-                    }
-                    maxLength={500}
-                    disabled={submittingThis}
-                    className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
-                  />
-                  <button
-                    onClick={() => handleSubmitDelivery(m.milestoneIndex)}
-                    disabled={!deliveryInputs[m.milestoneIndex]?.trim() || isSubmitPending || isSubmitConfirming}
-                    className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
-                    style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
-                  >
-                    {isSubmitPending && submitIndex === m.milestoneIndex
-                      ? "Confirm in Wallet..."
-                      : isSubmitConfirming && submitIndex === m.milestoneIndex
-                      ? "Waiting for Confirmation..."
-                      : "Submit Delivery"}
-                  </button>
-                  {submitError && (
-                    <p className="text-xs text-red-500">{parseContractError(submitError)}</p>
-                  )}
-                  {deliverySaveError[m.milestoneIndex] && (
-                    <p className="text-xs text-red-500">{deliverySaveError[m.milestoneIndex]}</p>
-                  )}
-                </div>
+                <DeliveryForm
+                  placeholder="Delivery reference (URL, IPFS hash, description...)"
+                  buttonLabel="Submit Delivery"
+                  value={deliveryInputs[m.milestoneIndex] ?? ""}
+                  onChange={(value) => setDeliveryInputs((prev) => ({ ...prev, [m.milestoneIndex]: value }))}
+                  send={{
+                    onClick: () => handleSubmitDelivery(m.milestoneIndex),
+                    isPending: isSubmitPending && submitIndex === m.milestoneIndex,
+                    isConfirming: isSubmitConfirming && submitIndex === m.milestoneIndex,
+                    error: submitError,
+                  }}
+                  busyElsewhere={(isSubmitPending || isSubmitConfirming) && submitIndex !== m.milestoneIndex}
+                  saveError={deliverySaveError[m.milestoneIndex]}
+                />
               )}
-              {isSeller && displayStatus === "DISPUTED" && !processingMilestones.has(m.milestoneIndex) &&
-                m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase() &&
-                isDisputeResubmitWindow(m.disputeOpenedAt) && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-zinc-700">You can resubmit your delivery within the {dayLabel(correctionWindowDays)} correction window.</p>
-                  <GrowingTextarea
+              {sellerCanAnswerDispute && inCorrectionWindow && (
+                <>
+                  <DeliveryForm
+                    intro={`You can resubmit your delivery within the ${dayLabel(correctionWindowDays)} correction window.`}
                     placeholder="New delivery reference (URL, IPFS hash, description...)"
+                    buttonLabel="Resubmit Delivery"
                     value={resubmitInputs[m.milestoneIndex] ?? ""}
-                    onChange={(e) =>
-                      setResubmitInputs((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))
-                    }
-                    maxLength={500}
-                    className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    onChange={(value) => setResubmitInputs((prev) => ({ ...prev, [m.milestoneIndex]: value }))}
+                    send={{
+                      onClick: () => handleResubmit(m.milestoneIndex),
+                      isPending: isResubmitPending && resubmitIndex === m.milestoneIndex,
+                      isConfirming: isResubmitConfirming && resubmitIndex === m.milestoneIndex,
+                      error: resubmitError,
+                    }}
+                    busyElsewhere={(isResubmitPending || isResubmitConfirming) && resubmitIndex !== m.milestoneIndex}
+                    saveError={deliverySaveError[m.milestoneIndex]}
                   />
-                  <button
-                    onClick={() => handleResubmit(m.milestoneIndex)}
-                    disabled={!resubmitInputs[m.milestoneIndex]?.trim() || isResubmitPending || isResubmitConfirming}
-                    className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40" style={{ background: "linear-gradient(145deg, hsl(221 83% 30%) 0%, hsl(217 91% 55%) 100%)", boxShadow: "0 2px 8px hsl(217 91% 30% / 0.35)" }}
-                  >
-                    {isResubmitPending && resubmitIndex === m.milestoneIndex
-                      ? "Confirm in Wallet..."
-                      : isResubmitConfirming && resubmitIndex === m.milestoneIndex
-                      ? "Waiting for Confirmation..."
-                      : "Resubmit Delivery"}
-                  </button>
-                  {resubmitError && (
-                    <p className="text-xs text-red-500">{parseContractError(resubmitError)}</p>
-                  )}
-                  {deliverySaveError[m.milestoneIndex] && (
-                    <p className="text-xs text-red-500">{deliverySaveError[m.milestoneIndex]}</p>
-                  )}
-                </div>
+                  {/* Escalating only skips the correction window, so it is offered only while that window is open */}
+                  <EscalateDispute
+                    open={!!escalationExpanded[m.milestoneIndex]}
+                    onOpenChange={(open) => setEscalationExpanded((prev) => ({ ...prev, [m.milestoneIndex]: open }))}
+                    reason={escalationReasons[m.milestoneIndex] ?? ""}
+                    onReasonChange={(reason) => setEscalationReasons((prev) => ({ ...prev, [m.milestoneIndex]: reason }))}
+                    escalate={{
+                      onClick: () => handleEscalate(m.milestoneIndex),
+                      isPending: isEscalatePending && escalateIndex === m.milestoneIndex,
+                      isConfirming: isEscalateConfirming && escalateIndex === m.milestoneIndex,
+                      error: escalateError,
+                    }}
+                    busyElsewhere={(isEscalatePending || isEscalateConfirming) && escalateIndex !== m.milestoneIndex}
+                  />
+                </>
               )}
-              {isSeller && displayStatus === "DISPUTED" && !processingMilestones.has(m.milestoneIndex) &&
-                m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase() &&
-                !isDisputeResubmitWindow(m.disputeOpenedAt) && !isDisputeTimeoutReady(m.disputeOpenedAt) && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-zinc-700">
-                    {correctionWindowMs > 0 && `The ${dayLabel(correctionWindowDays)} correction window has ended, so you can no longer resubmit. `}
-                    The platform will review and resolve this dispute.
-                  </p>
-                  {!sellerResponseExpanded[m.milestoneIndex] ? (
-                    <button
-                      onClick={() => {
-                        setSellerResponseDrafts((prev) => ({ ...prev, [m.milestoneIndex]: savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse ?? "" }));
-                        setSellerResponseExpanded((prev) => ({ ...prev, [m.milestoneIndex]: true }));
-                      }}
-                      className="w-full rounded-lg border border-zinc-400 px-4 py-2 text-sm text-zinc-700 transition-colors hover:bg-zinc-100"
-                    >
-                      {(savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse) ? "Edit your response" : "Respond to the dispute"}
-                    </button>
-                  ) : (
-                    <div className="rounded-lg border border-zinc-400 bg-white p-3 space-y-2">
-                      <p className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">Your response to the platform</p>
-                      <textarea
-                        value={sellerResponseDrafts[m.milestoneIndex] ?? ""}
-                        onChange={(e) => setSellerResponseDrafts((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))}
-                        placeholder="Give your side of the dispute…"
-                        maxLength={500}
-                        rows={3}
-                        className="w-full resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-400"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setSellerResponseExpanded((prev) => ({ ...prev, [m.milestoneIndex]: false }))}
-                          className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => handleSaveSellerResponse(m.milestoneIndex)}
-                          disabled={!sellerResponseDrafts[m.milestoneIndex]?.trim() || sellerResponseSaving === m.milestoneIndex}
-                          className="flex-1 rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-900 disabled:opacity-50"
-                        >
-                          {sellerResponseSaving === m.milestoneIndex ? "Saving..." : "Send to Platform"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  <p className="text-xs text-zinc-500">No transaction needed. Your response is shown to the platform and the buyer.</p>
-                  {sellerResponseError[m.milestoneIndex] && (
-                    <p className="text-xs text-red-500">{sellerResponseError[m.milestoneIndex]}</p>
-                  )}
-                </div>
-              )}
-              {/* Escalating only skips the correction window, so it is offered only while that window is open */}
-              {isSeller && displayStatus === "DISPUTED" && !processingMilestones.has(m.milestoneIndex) &&
-                m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase() &&
-                isDisputeResubmitWindow(m.disputeOpenedAt) && (
-                <div className="mt-3">
-                  {!escalationExpanded[m.milestoneIndex] ? (
-                    <button
-                      onClick={() => setEscalationExpanded((prev) => ({ ...prev, [m.milestoneIndex]: true }))}
-                      className="w-full rounded-lg border border-orange-400 px-4 py-2 text-sm text-orange-600 transition-colors hover:bg-orange-50"
-                    >
-                      Escalate to Admin
-                    </button>
-                  ) : (
-                    <div className="rounded-lg border border-red-500 bg-white p-3 space-y-2">
-                      <p className="text-xs font-semibold text-red-600 uppercase tracking-wider">Escalate to Admin</p>
-                      <textarea
-                        value={escalationReasons[m.milestoneIndex] ?? ""}
-                        onChange={(e) => setEscalationReasons((prev) => ({ ...prev, [m.milestoneIndex]: e.target.value }))}
-                        placeholder="Explain why you're escalating this to the platform…"
-                        maxLength={500}
-                        rows={3}
-                        className="w-full resize-none rounded-md border border-red-500 bg-white px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-400"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setEscalationExpanded((prev) => ({ ...prev, [m.milestoneIndex]: false }))}
-                          className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => handleEscalate(m.milestoneIndex)}
-                          disabled={!escalationReasons[m.milestoneIndex]?.trim() || isEscalatePending || isEscalateConfirming}
-                          className="flex-1 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
-                        >
-                          {isEscalatePending && escalateIndex === m.milestoneIndex
-                            ? "Confirm in Wallet..."
-                            : isEscalateConfirming && escalateIndex === m.milestoneIndex
-                            ? "Waiting..."
-                            : "Confirm Escalation"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Skip the correction window and let the platform resolve this dispute directly.
-                  </p>
-                  {escalateError && (
-                    <p className="mt-1 text-xs text-red-500">{parseContractError(escalateError)}</p>
-                  )}
-                </div>
+              {sellerCanAnswerDispute && !inCorrectionWindow && !isDisputeTimeoutReady(m.disputeOpenedAt) && (
+                <DisputeResponseForm
+                  correctionWindowDays={correctionWindowDays}
+                  savedResponse={savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse}
+                  open={!!sellerResponseExpanded[m.milestoneIndex]}
+                  onOpen={() => {
+                    setSellerResponseDrafts((prev) => ({ ...prev, [m.milestoneIndex]: savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse ?? "" }));
+                    setSellerResponseExpanded((prev) => ({ ...prev, [m.milestoneIndex]: true }));
+                  }}
+                  onCancel={() => setSellerResponseExpanded((prev) => ({ ...prev, [m.milestoneIndex]: false }))}
+                  draft={sellerResponseDrafts[m.milestoneIndex] ?? ""}
+                  onDraftChange={(draft) => setSellerResponseDrafts((prev) => ({ ...prev, [m.milestoneIndex]: draft }))}
+                  saving={sellerResponseSaving === m.milestoneIndex}
+                  onSave={() => handleSaveSellerResponse(m.milestoneIndex)}
+                  error={sellerResponseError[m.milestoneIndex]}
+                />
               )}
               {isPlatform && (displayStatus === "DISPUTED" || displayStatus === "ESCALATED") && !processingMilestones.has(m.milestoneIndex) && (
                 <div className="mt-3">
