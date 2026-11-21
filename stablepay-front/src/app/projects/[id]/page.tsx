@@ -1426,13 +1426,19 @@ export default function ProjectDetailPage() {
                   <div>
                     <MilestoneTitle index={m.milestoneIndex} label={m.label} />
                     <p className="mt-1 text-xs text-zinc-500">
-                      Amount {formatUSDC(grossBase)} USDC · platform fee {formatUSDC(feeBase)} USDC (2.5%)
+                      Amount {formatUSDC(grossBase)} USDC
+                      {!isClosed && ` · platform fee ${formatUSDC(feeBase)} USDC (2.5%)`}
                     </p>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs font-medium text-zinc-500">Seller receives</p>
-                    <p className="font-semibold text-emerald-700">{formatUSDC(sellerReceives)} USDC</p>
-                  </div>
+                  {/* A closed project was never funded — no money moved, so no payout to show */}
+                  {isClosed ? (
+                    <p className="shrink-0 text-xs font-medium text-zinc-500">Not funded</p>
+                  ) : (
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs font-medium text-zinc-500">Seller receives</p>
+                      <p className="font-semibold text-emerald-700">{formatUSDC(sellerReceives)} USDC</p>
+                    </div>
+                  )}
                 </div>
               </div>
             );
