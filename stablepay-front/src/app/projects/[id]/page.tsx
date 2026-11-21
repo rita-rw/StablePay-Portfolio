@@ -1582,7 +1582,7 @@ export default function ProjectDetailPage() {
                     onClick: () => handleClaimAutoApproval(m.milestoneIndex),
                     isPending: isClaimPending && claimIndex === m.milestoneIndex,
                     isConfirming: isClaimConfirming && claimIndex === m.milestoneIndex,
-                    error: claimError,
+                    error: claimIndex === m.milestoneIndex ? claimError : null,
                   }}
                   claimBusyElsewhere={(isClaimPending || isClaimConfirming) && claimIndex !== m.milestoneIndex}
                 />
@@ -1597,7 +1597,7 @@ export default function ProjectDetailPage() {
                     onClick: () => handleSubmitDelivery(m.milestoneIndex),
                     isPending: isSubmitPending && submitIndex === m.milestoneIndex,
                     isConfirming: isSubmitConfirming && submitIndex === m.milestoneIndex,
-                    error: submitError,
+                    error: submitIndex === m.milestoneIndex ? submitError : null,
                   }}
                   busyElsewhere={(isSubmitPending || isSubmitConfirming) && submitIndex !== m.milestoneIndex}
                   saveError={deliverySaveError[m.milestoneIndex]}
@@ -1615,7 +1615,7 @@ export default function ProjectDetailPage() {
                       onClick: () => handleResubmit(m.milestoneIndex),
                       isPending: isResubmitPending && resubmitIndex === m.milestoneIndex,
                       isConfirming: isResubmitConfirming && resubmitIndex === m.milestoneIndex,
-                      error: resubmitError,
+                      error: resubmitIndex === m.milestoneIndex ? resubmitError : null,
                     }}
                     busyElsewhere={(isResubmitPending || isResubmitConfirming) && resubmitIndex !== m.milestoneIndex}
                     saveError={deliverySaveError[m.milestoneIndex]}
@@ -1630,7 +1630,7 @@ export default function ProjectDetailPage() {
                       onClick: () => handleEscalate(m.milestoneIndex),
                       isPending: isEscalatePending && escalateIndex === m.milestoneIndex,
                       isConfirming: isEscalateConfirming && escalateIndex === m.milestoneIndex,
-                      error: escalateError,
+                      error: escalateIndex === m.milestoneIndex ? escalateError : null,
                     }}
                     busyElsewhere={(isEscalatePending || isEscalateConfirming) && escalateIndex !== m.milestoneIndex}
                   />
@@ -1679,7 +1679,7 @@ export default function ProjectDetailPage() {
                       ? `Claim Timeout Refund (${dayLabel(disputeTimeoutDays)} elapsed)`
                       : "Close Dispute (refund buyer)"}
                   </button>
-                  {disputeTimeoutError && (
+                  {disputeTimeoutError && timeoutIndex === m.milestoneIndex && (
                     <p className="mt-1 text-xs text-red-500">{parseContractError(disputeTimeoutError)}</p>
                   )}
                 </div>
