@@ -752,6 +752,19 @@ export default function ProjectDetailPage() {
     return () => clearTimeout(timeout);
   }, [isRejectSuccess, refetchCancelled, fetchEvents]);
 
+  // A wallet relay (e.g. MetaMask Smart Transactions) can report an error for a
+  // tx that still went through. Re-read the chain so the page shows what happened.
+  useEffect(() => {
+    if (!acceptError && !rejectError) return;
+    const recheck = () => {
+      refetchSellerAccepted();
+      refetchCancelled();
+    };
+    recheck();
+    const timeout = setTimeout(recheck, 4000);
+    return () => clearTimeout(timeout);
+  }, [acceptError, rejectError, refetchSellerAccepted, refetchCancelled]);
+
   // Track escalated milestones for processing spinner
   const lastEscalateIndexRef = useRef<number | null>(null);
   const pendingEscalationRef = useRef<{ milestoneIndex: number; reason: string } | null>(null);
