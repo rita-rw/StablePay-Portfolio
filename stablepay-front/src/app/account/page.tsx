@@ -5,6 +5,7 @@ import { useAccount, useWalletClient } from "wagmi";
 import { useRouter } from "next/navigation";
 import { fetchUser, updateUser } from "@/services/users";
 import { useMounted } from "@/hooks/useMounted";
+import { formatDate } from "@/lib/formatters";
 
 type UserProfile = {
   address: string;
@@ -107,11 +108,7 @@ export default function AccountPage() {
   const initials = profile.companyName.slice(0, 2).toUpperCase();
   const createdMs = profile.createdAt ? Date.parse(profile.createdAt) : NaN;
   const memberSince = Number.isFinite(createdMs)
-    ? new Date(createdMs).toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
+    ? formatDate(createdMs)
     : null;
 
   return (

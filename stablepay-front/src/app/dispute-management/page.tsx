@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
-import { shortAddr, decodeTitle } from "@/lib/formatters";
+import { shortAddr, decodeTitle, formatDate } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import { useMounted } from "@/hooks/useMounted";
 import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
@@ -189,17 +189,13 @@ export default function AdminPage() {
                 {project.oldestDisputeAt && (
                   <p className="mt-0.5 text-xs text-red-600">
                     Dispute opened:{" "}
-                    {new Date(project.oldestDisputeAt).toLocaleDateString("en-GB", {
-                      day: "numeric", month: "short", year: "numeric",
-                    })}
+                    {formatDate(project.oldestDisputeAt)}
                   </p>
                 )}
                 {activeTab === "resolved" && project.resolvedAt && (
                   <p className="mt-0.5 text-xs text-emerald-600">
                     Closed:{" "}
-                    {new Date(project.resolvedAt).toLocaleDateString("en-GB", {
-                      day: "numeric", month: "short", year: "numeric",
-                    })}
+                    {formatDate(project.resolvedAt)}
                   </p>
                 )}
               </div>

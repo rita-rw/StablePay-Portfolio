@@ -10,9 +10,20 @@ export function shortAddr(addr: string): string {
  * Avoids the float-rounding drift of `parseFloat(formatUnits(...)).toFixed(2)`,
  * which silently drops the sub-cent remainder USDC's 6 decimals can carry.
  */
-/** Date and time of an automatic payment release, e.g. "28 nov. 2026 14:51". */
-export function formatAutoRelease(date: Date): string {
-  return date.toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" });
+/** One date format for the whole app, e.g. "21 Nov 2026". */
+export function formatDate(value: string | number | Date): string {
+  return new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** Date with time (24-hour clock), e.g. "21 Nov 2026, 15:25". */
+export function formatDateTime(value: string | number | Date): string {
+  return new Date(value).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function formatUSDC(baseUnits: bigint): string {

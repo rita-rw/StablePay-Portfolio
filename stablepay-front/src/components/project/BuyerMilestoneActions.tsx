@@ -1,4 +1,4 @@
-import { parseContractError, formatAutoRelease } from "@/lib/formatters";
+import { parseContractError, formatDateTime } from "@/lib/formatters";
 import { txButtonLabel, type TxAction } from "@/lib/tx";
 
 type BuyerMilestoneActionsProps = {
@@ -39,7 +39,7 @@ export function BuyerMilestoneActions({
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           {approvalWindowEnded
             ? "The approval window has ended. The seller can now claim this payment."
-            : `If you don't approve or dispute, this payment will be released to the seller automatically on ${formatAutoRelease(releaseAt)}.`}
+            : `If you don't approve or dispute, this payment will be released to the seller automatically on ${formatDateTime(releaseAt)}.`}
         </p>
       )}
       {!approvalWindowEnded && (

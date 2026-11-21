@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/formatters";
 import { MilestonePayment } from "@/components/project/MilestonePayment";
 
 type MilestoneHistoryProps = {
@@ -72,7 +73,7 @@ export function MilestoneHistory({
           <p className="text-zinc-700">
             <span className="font-medium text-zinc-600">Buyer opened dispute:</span>{" "}
             {buyerCompany ?? (buyer ? shortAddress(buyer) : "Buyer")}
-            {m.disputeOpenedAt && <span className="text-zinc-400"> · {new Date(m.disputeOpenedAt).toLocaleDateString()}</span>}
+            {m.disputeOpenedAt && <span className="text-zinc-400"> · {formatDate(m.disputeOpenedAt)}</span>}
           </p>
           {disputeReason && (
             <p className="text-zinc-800">
@@ -81,7 +82,7 @@ export function MilestoneHistory({
           )}
           <p className="text-zinc-700">
             <span className="font-medium text-zinc-600">Seller escalated to admin</span>
-            {m.disputeEscalatedAt && <span className="text-zinc-400"> · {new Date(m.disputeEscalatedAt).toLocaleDateString()}</span>}
+            {m.disputeEscalatedAt && <span className="text-zinc-400"> · {formatDate(m.disputeEscalatedAt)}</span>}
           </p>
           {escalationReason && (
             <p className="text-zinc-800">
@@ -113,13 +114,13 @@ export function MilestoneHistory({
           {disputeOpenedAt && (
             <p className="text-zinc-700">
               <span className="font-medium text-zinc-600">Opened:</span>{" "}
-              {new Date(disputeOpenedAt).toLocaleDateString()}
+              {formatDate(disputeOpenedAt)}
             </p>
           )}
           {isDisputeOutcome && m.paidAt && (
             <p className="mt-1 text-zinc-700">
               <span className="font-medium text-zinc-600">Settled:</span>{" "}
-              {new Date(m.paidAt).toLocaleDateString()}
+              {formatDate(m.paidAt)}
             </p>
           )}
           {isDisputeOutcome && m.resolutionNote && (

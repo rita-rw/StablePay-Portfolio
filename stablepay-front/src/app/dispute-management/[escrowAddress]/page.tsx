@@ -8,7 +8,7 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminDisputeDetail } from "@/services/admin";
 import { API_URL, PLATFORM_ADDRESS, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
 import { authFetch } from "@/lib/authFetch";
-import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase, formatDate, formatDateTime } from "@/lib/formatters";
 import { useMounted } from "@/hooks/useMounted";
 import { useNow } from "@/hooks/useNow";
 
@@ -329,7 +329,7 @@ export default function AdminProjectDisputesPage() {
             );
             const lockedTitle = !canResolve
               ? unlockAt
-                ? `Locked until ${new Date(unlockAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} — correction window still running`
+                ? `Locked until ${formatDateTime(unlockAt)} — correction window still running`
                 : "Locked — waiting for the dispute's on-chain open time to sync"
               : undefined;
 
@@ -375,7 +375,7 @@ export default function AdminProjectDisputesPage() {
                   {dispute.disputeOpenedAt && (
                     <div>
                       <p className="text-xs font-medium text-zinc-500 mb-0.5">Opened</p>
-                      <p className="text-zinc-900">{new Date(dispute.disputeOpenedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                      <p className="text-zinc-900">{formatDate(dispute.disputeOpenedAt)}</p>
                     </div>
                   )}
                   {dispute.disputeOpenedBy && displayBuyer && (
@@ -555,7 +555,7 @@ export default function AdminProjectDisputesPage() {
                               ? `The buyer opened this dispute, so the contract enforces a ${correctionWindowDays ?? 7}-day correction window before the platform can resolve. `
                               : `This dispute is still within its ${correctionWindowDays ?? 7}-day correction window. `}
                             {unlockAt
-                              ? `You can resolve it from ${new Date(unlockAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}.`
+                              ? `You can resolve it from ${formatDateTime(unlockAt)}.`
                               : `The dispute's on-chain open time hasn't synced yet — try refreshing in a moment.`}
                           </p>
                         </div>

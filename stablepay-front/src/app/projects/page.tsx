@@ -7,7 +7,7 @@ import Link from "next/link";
 import { formatUnits } from "viem";
 import { fetchUserProjects, fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
-import { getDisplayStatus, statusBadge, decodeTitle } from "@/lib/formatters";
+import { getDisplayStatus, statusBadge, decodeTitle, formatDate } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import { useMounted } from "@/hooks/useMounted";
 import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
@@ -123,7 +123,7 @@ function ProjectsList() {
   }
 
   function formatCardDate(ms: number): string {
-    return new Date(ms).toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
+    return formatDate(ms);
   }
 
   function listDateLabel(escrow: Escrow, displayStatus: string): string {

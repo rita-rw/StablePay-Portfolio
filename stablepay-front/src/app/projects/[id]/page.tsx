@@ -11,7 +11,7 @@ import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase, formatAutoRelease } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase, formatDateTime } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { GrowingTextarea } from "@/components/shared/GrowingTextarea";
 import { ProjectTimeline, type ProjectEvent } from "@/components/project/ProjectTimeline";
@@ -1587,7 +1587,7 @@ export default function ProjectDetailPage() {
                         if (releaseAt.getTime() <= now) {
                           return "The approval window has ended. You can release this payment.";
                         }
-                        return `Waiting for buyer approval. You can release this payment automatically on ${formatAutoRelease(releaseAt)}.`;
+                        return `Waiting for buyer approval. You can release this payment automatically on ${formatDateTime(releaseAt)}.`;
                       })()}
                     </p>
                   </div>

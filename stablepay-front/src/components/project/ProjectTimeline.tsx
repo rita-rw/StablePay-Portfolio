@@ -1,4 +1,4 @@
-import { getEventLabel } from "@/lib/formatters";
+import { getEventLabel, formatDateTime } from "@/lib/formatters";
 
 export type ProjectEvent = {
   type: string;
@@ -19,10 +19,6 @@ type ProjectTimelineProps = {
 
 const NEGATIVE_EVENTS = ["project_cancelled", "project_rejected"];
 const FINISHED_STATUSES = ["PAID", "RESOLVED", "REFUNDED"];
-
-function formatDateTime(timestamp: string): string {
-  return new Date(timestamp).toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" });
-}
 
 /** Vertical list of everything that has happened in a project, oldest first. */
 export function ProjectTimeline({ events, milestones }: ProjectTimelineProps) {
