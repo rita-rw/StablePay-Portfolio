@@ -1250,7 +1250,8 @@ export async function syncSingleEscrow(escrowId: string) {
       syncClient.readContract({ address, abi: escrowReadAbi, functionName: "DISPUTE_TIMEOUT_DAYS" }).catch(() => null),
     ]) as [boolean, boolean, bigint, bigint | null, bigint | null, bigint | null];
 
-    const onChainStatus = cancelled ? "CANCELLED" : (funded as boolean) ? "FUNDED" : sellerAccepted ? "SELLER_ACCEPTED" : "CREATED";
+    // The contract only stores `cancelled`, not who cancelled — keep SELLER_REJECTED set by the listener
+    const onChainStatus = cancelled ? (escrow.status === "SELLER_REJECTED" ? "SELLER_REJECTED" : "CANCELLED") : (funded as boolean) ? "FUNDED" : sellerAccepted ? "SELLER_ACCEPTED" : "CREATED";
 
     // Build update payload
     const updateData: Record<string, unknown> = {};
@@ -1294,8 +1295,10 @@ export async function syncSingleEscrow(escrowId: string) {
     }
 
     if (Object.keys(updateData).length > 0) {
-      await prisma.escrow.update({ where: { id: escrow.id }, data: updateData });
-      console.log(`[sync] ${address}: updated`, Object.keys(updateData));
+      // Only write if the status is unchanged since we read it. If the listener
+      // wrote e.g. SELLER_REJECTED meanwhile, skip — the next sync retries.
+      const { count: updated } = await prisma.escrow.updateMany({ where: { id: escrow.id, status: escrow.status }, data: updateData });
+      if (updated > 0) console.log(`[sync] ${address}: updated`, Object.keys(updateData));
     }
 
     // Sync milestone statuses + timestamps
@@ -1434,7 +1437,8 @@ async function catchUpOnChainState(startToken: number) {
       ]) as [unknown, unknown, unknown, bigint | null, bigint | null, bigint | null];
 
       // Sync escrow status
-      const onChainStatus = cancelled ? "CANCELLED" : funded ? "FUNDED" : sellerAccepted ? "SELLER_ACCEPTED" : "CREATED";
+      // The contract only stores `cancelled`, not who cancelled — keep SELLER_REJECTED set by the listener
+      const onChainStatus = cancelled ? (escrow.status === "SELLER_REJECTED" ? "SELLER_REJECTED" : "CANCELLED") : funded ? "FUNDED" : sellerAccepted ? "SELLER_ACCEPTED" : "CREATED";
 
       // Build update payload
       const updateData: Record<string, unknown> = {};
@@ -1470,8 +1474,9 @@ async function catchUpOnChainState(startToken: number) {
       }
 
       if (Object.keys(updateData).length > 0) {
-        await prisma.escrow.update({ where: { id: address }, data: updateData });
-        console.log(`[catch-up] ${address}: updated`, Object.keys(updateData));
+        // Only write if the status is unchanged since we read it (see syncSingleEscrow)
+        const { count: updated } = await prisma.escrow.updateMany({ where: { id: address, status: escrow.status }, data: updateData });
+        if (updated > 0) console.log(`[catch-up] ${address}: updated`, Object.keys(updateData));
       }
 
       // Sync milestone statuses

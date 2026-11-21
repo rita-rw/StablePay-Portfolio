@@ -744,8 +744,13 @@ export default function ProjectDetailPage() {
   }, [isAcceptSuccess, refetchSellerAccepted]);
 
   useEffect(() => {
-    if (isRejectSuccess) refetchCancelled();
-  }, [isRejectSuccess, refetchCancelled]);
+    if (!isRejectSuccess) return;
+    refetchCancelled();
+    // Fetch the timeline now and again once the listener has written the rejection
+    fetchEvents();
+    const timeout = setTimeout(fetchEvents, 4000);
+    return () => clearTimeout(timeout);
+  }, [isRejectSuccess, refetchCancelled, fetchEvents]);
 
   // Track escalated milestones for processing spinner
   const lastEscalateIndexRef = useRef<number | null>(null);
@@ -1014,11 +1019,13 @@ export default function ProjectDetailPage() {
   }, [isFundSuccess, fetchMilestones, fetchEvents]);
 
   useEffect(() => {
-    if (isCancelSuccess) {
-      refetchCancelled();
-      fetchMilestones();
-    }
-  }, [isCancelSuccess, refetchCancelled, fetchMilestones]);
+    if (!isCancelSuccess) return;
+    refetchCancelled();
+    fetchMilestones();
+    fetchEvents();
+    const timeout = setTimeout(fetchEvents, 4000);
+    return () => clearTimeout(timeout);
+  }, [isCancelSuccess, refetchCancelled, fetchMilestones, fetchEvents]);
 
   // Project-level actions change the status at the top of the page — scroll there so the user sees it.
   // Milestone actions are left out on purpose: the user should stay at the milestone they acted on.
@@ -1097,7 +1104,8 @@ export default function ProjectDetailPage() {
     return status;
   }
 
-  const headerStatus = getDisplayStatus("CREATED", {
+  const isRejected = isRejectSuccess || events.some((e) => e.type === "project_rejected");
+  const headerStatus = getDisplayStatus(isRejected ? "SELLER_REJECTED" : "CREATED", {
     sellerAccepted: Boolean(sellerAccepted || isAcceptSuccess),
     funded: Boolean(isFunded || isFundSuccess),
     cancelled: Boolean(isCancelled || isCancelSuccess || isRejectSuccess),
@@ -1447,7 +1455,9 @@ export default function ProjectDetailPage() {
       {(isCancelled || isCancelSuccess) && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
           <p className="text-sm text-red-700">
-            {isFunded
+            {isRejected
+              ? "This project was rejected by the seller."
+              : isFunded
               ? "This project has been cancelled and all funds have been returned to the buyer."
               : "This project has been cancelled."}
           </p>

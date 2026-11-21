@@ -114,7 +114,8 @@ export function getDisplayStatus(
   milestoneCount?: number,
 ): string {
   if (onChain) {
-    if (onChain.cancelled) return "CANCELLED";
+    // The contract only stores `cancelled`; the DB knows if the seller rejected
+    if (onChain.cancelled) return dbStatus === "SELLER_REJECTED" ? "SELLER_REJECTED" : "CANCELLED";
     if (onChain.allPaid) return "COMPLETED"; // allPaid includes RESOLVED milestones
     if (onChain.hasSubmitted) return "IN_PROGRESS";
     if (onChain.funded) return "FUNDED";
