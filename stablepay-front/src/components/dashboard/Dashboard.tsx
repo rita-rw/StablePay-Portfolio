@@ -8,7 +8,7 @@ import { useUser } from "@/hooks/useUser";
 import { useEscrowStatuses, type EscrowStatus } from "@/hooks/useEscrowStatuses";
 import { fetchUserProjects } from "@/services/projects";
 import { SignatureDeclinedError } from "@/lib/authFetch";
-import { deriveProjectStatus, decodeTitle, calcFeeBase } from "@/lib/formatters";
+import { deriveProjectStatus, decodeTitle, calcFeeBase, shortAddr } from "@/lib/formatters";
 import { PLATFORM_FEE_BPS } from "@/lib/constants";
 import type { Escrow } from "@/types/escrow";
 import { Wallet, ArrowDownLeft, Plus, ArrowRight, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
@@ -291,10 +291,10 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="font-semibold text-zinc-900 group-hover:text-primary transition-colors">
-                        {escrow.title ? decodeTitle(escrow.title) : `${escrow.id.slice(0, 6)}...${escrow.id.slice(-4)}`}
+                        {escrow.title ? decodeTitle(escrow.title) : shortAddr(escrow.id)}
                       </p>
                       <p className="font-mono text-xs text-zinc-400 mt-0.5">
-                        {escrow.id.slice(0, 6)}...{escrow.id.slice(-4)}
+                        {shortAddr(escrow.id)}
                       </p>
                       <p className="text-sm text-zinc-700 mt-0.5">
                         {role} &middot; {escrow.milestoneCount} milestone{escrow.milestoneCount !== 1 ? "s" : ""} &middot; {formatUnits(BigInt(escrow.totalAmount), 6)} USDC

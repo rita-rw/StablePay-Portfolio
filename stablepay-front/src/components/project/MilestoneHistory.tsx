@@ -1,4 +1,4 @@
-import { formatDate } from "@/lib/formatters";
+import { formatDate, shortAddr } from "@/lib/formatters";
 import { MilestonePayment } from "@/components/project/MilestonePayment";
 
 type MilestoneHistoryProps = {
@@ -28,10 +28,6 @@ type MilestoneHistoryProps = {
   buyerCompany?: string | null;
   sellerCompany?: string | null;
 };
-
-function shortAddress(address: string): string {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
 
 /** Read-only record of what happened to a milestone: delivery, dispute, escalation, approval, payment. */
 export function MilestoneHistory({
@@ -72,7 +68,7 @@ export function MilestoneHistory({
           <p className="mb-1.5 font-semibold text-red-600 uppercase tracking-wider text-[10px]">Escalated</p>
           <p className="text-zinc-700">
             <span className="font-medium text-zinc-600">Buyer opened dispute:</span>{" "}
-            {buyerCompany ?? (buyer ? shortAddress(buyer) : "Buyer")}
+            {buyerCompany ?? (buyer ? shortAddr(buyer) : "Buyer")}
             {m.disputeOpenedAt && <span className="text-zinc-400"> · {formatDate(m.disputeOpenedAt)}</span>}
           </p>
           {disputeReason && (
@@ -98,7 +94,7 @@ export function MilestoneHistory({
           {disputeOpenedBy && (
             <p className="mb-1 text-zinc-700">
               <span className="font-medium text-zinc-600">Opened by ({isByBuyer ? "Buyer" : "Seller"}):</span>{" "}
-              {(isByBuyer ? buyerCompany : sellerCompany) ?? shortAddress(disputeOpenedBy)}
+              {(isByBuyer ? buyerCompany : sellerCompany) ?? shortAddr(disputeOpenedBy)}
             </p>
           )}
           {disputeReason && (

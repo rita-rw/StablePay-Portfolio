@@ -7,7 +7,7 @@ import Link from "next/link";
 import { formatUnits } from "viem";
 import { fetchUserProjects, fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
-import { getDisplayStatus, statusBadge, decodeTitle, formatDate } from "@/lib/formatters";
+import { getDisplayStatus, statusBadge, decodeTitle, formatDate, shortAddr } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import { useMounted } from "@/hooks/useMounted";
 import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
@@ -243,7 +243,7 @@ function ProjectsList() {
                         {decodeTitle(escrow.title || "Untitled Project")}
                       </span>
                       <p className="font-mono text-xs text-zinc-400 mt-0.5">
-                        {escrow.id.slice(0, 6)}...{escrow.id.slice(-4)}
+                        {shortAddr(escrow.id)}
                         <span className="ml-3 not-italic font-sans">
                           {listDateLabel(escrow, displayStatus)}
                         </span>
@@ -265,9 +265,9 @@ function ProjectsList() {
                   </div>
                   <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
                     <p className="text-xs text-zinc-700">
-                      {escrow.buyerCompany ?? `${escrow.buyer.slice(0, 6)}...${escrow.buyer.slice(-4)}`}{" "}
+                      {escrow.buyerCompany ?? shortAddr(escrow.buyer)}{" "}
                       <span className="text-zinc-400">&rarr;</span>{" "}
-                      {escrow.sellerCompany ?? `${escrow.seller.slice(0, 6)}...${escrow.seller.slice(-4)}`}
+                      {escrow.sellerCompany ?? shortAddr(escrow.seller)}
                     </p>
                     <p className="text-xs text-zinc-700">
                       <span className="font-semibold text-zinc-900">{formatUnits(BigInt(escrow.totalAmount), 6)}</span>{" "}
@@ -290,7 +290,7 @@ function ProjectsList() {
                           {decodeTitle(escrow.title || "Untitled Project")}
                         </span>
                         <p className="font-mono text-xs text-zinc-400 mt-0.5">
-                          {escrow.id.slice(0, 6)}...{escrow.id.slice(-4)}
+                          {shortAddr(escrow.id)}
                           <span className="ml-3 not-italic font-sans">
                             {listDateLabel(escrow, displayStatus)}
                           </span>
@@ -310,9 +310,9 @@ function ProjectsList() {
                     </div>
                     <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
                       <p className="text-xs text-zinc-700">
-                        {escrow.buyerCompany ?? `${escrow.buyer.slice(0, 6)}...${escrow.buyer.slice(-4)}`}{" "}
+                        {escrow.buyerCompany ?? shortAddr(escrow.buyer)}{" "}
                         <span className="text-zinc-400">&rarr;</span>{" "}
-                        {escrow.sellerCompany ?? `${escrow.seller.slice(0, 6)}...${escrow.seller.slice(-4)}`}
+                        {escrow.sellerCompany ?? shortAddr(escrow.seller)}
                       </p>
                       <div className="flex items-center gap-3">
                         <p className="text-xs text-zinc-700">

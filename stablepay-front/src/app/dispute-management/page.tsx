@@ -179,7 +179,7 @@ export default function AdminPage() {
                 <p className="font-semibold text-zinc-900 group-hover:text-primary transition-colors">
                   {project.title
                     ? decodeTitle(project.title)
-                    : `${project.escrowAddress.slice(0, 6)}...${project.escrowAddress.slice(-4)}`}
+                    : shortAddr(project.escrowAddress)}
                 </p>
                 <p className="mt-0.5 text-xs text-zinc-700">
                   {project.buyerCompany ?? shortAddr(project.buyer)}{" "}

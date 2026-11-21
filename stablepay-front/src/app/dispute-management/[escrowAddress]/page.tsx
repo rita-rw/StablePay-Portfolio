@@ -258,7 +258,7 @@ export default function AdminProjectDisputesPage() {
 
   const projectTitle = escrowMeta?.title
     ? decodeTitle(escrowMeta.title)
-    : `${escrowAddress?.slice(0, 6)}...${escrowAddress?.slice(-4)}`;
+    : shortAddr(escrowAddress);
   const displayBuyer = (buyer as string) ?? escrowMeta?.buyer;
   const displaySeller = (seller as string) ?? escrowMeta?.seller;
 

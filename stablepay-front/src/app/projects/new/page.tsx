@@ -16,7 +16,7 @@ import { useUser } from "@/hooks/useUser";
 import { useMounted } from "@/hooks/useMounted";
 import { seedProject, saveProjectMetadata } from "@/services/projects";
 import { FACTORY_ADDRESS, USDC_ADDRESS, PLATFORM_FEE_BPS } from "@/lib/constants";
-import { parseFactoryError, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { parseFactoryError, formatUSDC, calcFeeBase, shortAddr } from "@/lib/formatters";
 import { computeMetadataHash } from "@/lib/metadataHash";
 import type { MilestoneInput } from "@/types/escrow";
 import Link from "next/link";
@@ -280,7 +280,7 @@ export default function CreateProjectPage() {
             </p>
             {escrowAddress && (
               <p className="font-mono text-xs text-zinc-400 mb-1">
-                Escrow: {escrowAddress.slice(0, 6)}...{escrowAddress.slice(-4)}
+                Escrow: {shortAddr(escrowAddress)}
               </p>
             )}
             <p className="font-mono text-xs text-zinc-400 mb-6">
