@@ -10,7 +10,7 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
-import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
+import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { GrowingTextarea } from "@/components/shared/GrowingTextarea";
@@ -18,6 +18,7 @@ import { ProjectTimeline, type ProjectEvent } from "@/components/project/Project
 import { ProjectInfoCard } from "@/components/project/ProjectInfoCard";
 import { FundProject } from "@/components/project/FundProject";
 import { ProjectInvitation } from "@/components/project/ProjectInvitation";
+import { MilestonePayment } from "@/components/project/MilestonePayment";
 import { type TxAction } from "@/lib/tx";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
@@ -1527,91 +1528,10 @@ export default function ProjectDetailPage() {
                 )}
               </div>
               {(() => {
-                const grossBase = BigInt(m.amount);
                 const hadDispute = !!m.disputeOpenedAt;
-                const isDisputeResolved = displayStatus === "RESOLVED";
-                const isDisputePaid = displayStatus === "PAID" && hadDispute;
-                const isDisputeRefunded = displayStatus === "REFUNDED" && hadDispute;
-                const isDisputeOutcome = isDisputeResolved || isDisputePaid || isDisputeRefunded;
-                const isPaid = displayStatus === "PAID";
-
-                const sellerAwardValue = m.sellerAward ?? onChainAwards[m.milestoneIndex];
-
-                // Compute fee amounts based on actual dispute outcome, in USDC base
-                // units (6 decimals) using the same integer math as the contract —
-                // avoids float rounding drift (e.g. 1.00 USDC showing "0.03 USDC (2.5%)"
-                // and "0.97" instead of the real 0.025 / 0.975 split).
-                const disputeFeeBase = isDisputeOutcome ? calcFeeBase(grossBase, DISPUTE_FEE_BPS) : 0n;
-                let platformFeeBase = 0n;
-                let netBase = 0n;
-                let buyerRefundBase: bigint | null = null;
-                let loadingAward = false;
-
-                if (isDisputeRefunded) {
-                  // Buyer wins entirely: no platform fee, seller gets 0
-                  platformFeeBase = 0n;
-                  netBase = 0n;
-                  buyerRefundBase = grossBase - disputeFeeBase;
-                } else if ((isDisputePaid || isDisputeResolved) && sellerAwardValue) {
-                  // sellerAward = gross allocated to seller before 2.5% platform fee
-                  const sellerGrossBase = BigInt(sellerAwardValue);
-                  platformFeeBase = calcFeeBase(sellerGrossBase, PLATFORM_FEE_BPS);
-                  netBase = sellerGrossBase - platformFeeBase;
-                  if (isDisputeResolved) {
-                    const refund = grossBase - sellerGrossBase - disputeFeeBase;
-                    buyerRefundBase = refund > 0n ? refund : 0n;
-                  }
-                } else if (isDisputeOutcome && !sellerAwardValue) {
-                  loadingAward = true;
-                } else if (displayStatus === "REFUNDED") {
-                  // Plain cancellation (cancelEscrow, no dispute involved): buyer gets
-                  // the full milestone amount back, no platform fee, seller gets nothing.
-                  platformFeeBase = 0n;
-                  netBase = 0n;
-                  buyerRefundBase = grossBase;
-                } else {
-                  // Normal PAID (approved/auto-approved)
-                  platformFeeBase = calcFeeBase(grossBase, PLATFORM_FEE_BPS);
-                  netBase = grossBase - platformFeeBase;
-                }
-
-                const paymentBreakdown = loadingAward ? (
-                  <div className="mt-3 text-xs text-zinc-400 italic">Loading settlement details…</div>
-                ) : (
-                  <div className="mt-3 rounded-lg border border-zinc-900 bg-white p-3 text-xs">
-                    <p className="mb-2 font-semibold text-zinc-500 uppercase tracking-wider text-[10px]">
-                      {isDisputeOutcome ? "Settlement" : "Payment"}
-                    </p>
-                    <div className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1">
-                      <span className="text-zinc-500">Amount</span>
-                      <span className="text-zinc-800">{formatUSDC(grossBase)} USDC</span>
-                      {isDisputeOutcome && (
-                        <>
-                          <span className="text-zinc-500">Dispute fee</span>
-                          <span className="text-zinc-700">{formatUSDC(disputeFeeBase)} USDC <span className="text-zinc-400">(1%)</span></span>
-                        </>
-                      )}
-                      {platformFeeBase > 0n && (
-                        <>
-                          <span className="text-zinc-500">Platform fee</span>
-                          <span className="text-zinc-700">{formatUSDC(platformFeeBase)} USDC <span className="text-zinc-400">{isDisputeOutcome ? "(2.5% of seller's share)" : "(2.5%)"}</span></span>
-                        </>
-                      )}
-                      {buyerRefundBase !== null && buyerRefundBase > 0n && (
-                        <>
-                          <span className="text-zinc-500">Refunded</span>
-                          <span className="text-zinc-700">{formatUSDC(buyerRefundBase)} USDC</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="mt-2 flex items-center justify-between border-t border-zinc-200 pt-2">
-                      <span className="font-medium text-zinc-700">{isPaid ? "Paid to seller" : "Seller receives"}</span>
-                      <span className="font-bold text-sm text-zinc-900">
-                        {formatUSDC(netBase)} USDC
-                      </span>
-                    </div>
-                  </div>
-                );
+                const isDisputeOutcome =
+                  displayStatus === "RESOLVED" ||
+                  ((displayStatus === "PAID" || displayStatus === "REFUNDED") && hadDispute);
 
                 const disputeReason = m.disputeReason ?? optimisticDisputes[m.milestoneIndex];
                 const disputeOpenedBy = m.disputeOpenedBy ?? (locallyDisputed ? address : undefined);
@@ -1715,7 +1635,14 @@ export default function ProjectDetailPage() {
                         </p>
                       </div>
                     )}
-                    {["PAID", "REFUNDED", "RESOLVED"].includes(displayStatus) && paymentBreakdown}
+                    {["PAID", "REFUNDED", "RESOLVED"].includes(displayStatus) && (
+                      <MilestonePayment
+                        amount={m.amount}
+                        status={displayStatus}
+                        hadDispute={hadDispute}
+                        sellerAward={m.sellerAward ?? onChainAwards[m.milestoneIndex]}
+                      />
+                    )}
                   </>
                 );
               })()}
