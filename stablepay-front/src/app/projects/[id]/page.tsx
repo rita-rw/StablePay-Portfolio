@@ -1555,14 +1555,14 @@ export default function ProjectDetailPage() {
                     onClick: () => handleApproveMilestone(m.milestoneIndex),
                     isPending: isApproveMilestonePending && approvingThis,
                     isConfirming: isApproveMilestoneConfirming && approvingThis,
-                    error: approveMilestoneError,
+                    error: approvingThis ? approveMilestoneError : null,
                   }}
                   approveBusyElsewhere={(isApproveMilestonePending || isApproveMilestoneConfirming) && !approvingThis}
                   dispute={{
                     onClick: () => handleOpenDispute(m.milestoneIndex),
                     isPending: isOpenDisputePending && disputeIndex === m.milestoneIndex,
                     isConfirming: isOpenDisputeConfirming && disputeIndex === m.milestoneIndex,
-                    error: openDisputeError,
+                    error: disputeIndex === m.milestoneIndex ? openDisputeError : null,
                   }}
                   disputeBusyElsewhere={(isOpenDisputePending || isOpenDisputeConfirming) && disputeIndex !== m.milestoneIndex}
                   disputeOpen={!!disputeExpanded[m.milestoneIndex]}
