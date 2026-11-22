@@ -969,8 +969,7 @@ export default function ProjectDetailPage() {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchEvents is stable, adding it causes infinite loops
-  }, [processingMilestones.size, fetchMilestones]);
+  }, [processingMilestones.size, fetchMilestones, fetchEvents]);
 
   // When milestones data updates, remove any that reached their expected status
   useEffect(() => {
