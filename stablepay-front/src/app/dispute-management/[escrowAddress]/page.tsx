@@ -328,6 +328,9 @@ export default function AdminProjectDisputesPage() {
               displayBuyer &&
               dispute.disputeOpenedBy.toLowerCase() === displayBuyer.toLowerCase()
             );
+            // sellerEscalate overwrites disputeOpenedBy with the seller on-chain, but only a
+            // buyer-opened dispute can be escalated — so an escalated dispute was opened by the buyer.
+            const showOpenedByBuyer = dispute.isEscalated || buyerOpenedKnown;
             const lockedTitle = !canResolve
               ? unlockAt
                 ? `Locked until ${formatDateTime(unlockAt)} — correction window still running`
@@ -382,11 +385,11 @@ export default function AdminProjectDisputesPage() {
                   {dispute.disputeOpenedBy && displayBuyer && (
                     <div>
                       <p className="text-xs font-medium text-zinc-500 mb-0.5">
-                        Opened by ({dispute.disputeOpenedBy.toLowerCase() === displayBuyer.toLowerCase() ? "buyer" : "seller"})
+                        Opened by ({showOpenedByBuyer ? "buyer" : "seller"})
                       </p>
                       <p className="text-zinc-900">
-                        {dispute.disputeOpenedBy.toLowerCase() === displayBuyer.toLowerCase()
-                          ? (escrowMeta?.buyerCompany ?? shortAddr(dispute.disputeOpenedBy))
+                        {showOpenedByBuyer
+                          ? (escrowMeta?.buyerCompany ?? shortAddr(displayBuyer))
                           : (escrowMeta?.sellerCompany ?? shortAddr(dispute.disputeOpenedBy))}
                       </p>
                     </div>

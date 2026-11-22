@@ -53,7 +53,10 @@ export function MilestoneHistory({
   const showDisputeBox =
     (status === "DISPUTED" || isDisputeOutcome || locallyDisputed) &&
     (processingAs == null || processingAs === "DISPUTED");
-  const isByBuyer = disputeOpenedBy?.toLowerCase() === buyer?.toLowerCase();
+  // sellerEscalate overwrites disputeOpenedBy with the seller on-chain, but only a
+  // buyer-opened dispute can be escalated — so an escalated dispute was opened by the buyer.
+  const openedBy = m.disputeEscalatedAt ? buyer : disputeOpenedBy;
+  const isByBuyer = openedBy?.toLowerCase() === buyer?.toLowerCase();
 
   return (
     <>
@@ -91,10 +94,10 @@ export function MilestoneHistory({
       {showDisputeBox && (
         <div className="mt-3 border-l-2 border-red-500 bg-zinc-50 px-3 py-2 text-xs rounded-r-md">
           <p className="mb-1.5 font-semibold text-red-600 uppercase tracking-wider text-[10px]">Dispute</p>
-          {disputeOpenedBy && (
+          {openedBy && (
             <p className="mb-1 text-zinc-700">
               <span className="font-medium text-zinc-600">Opened by ({isByBuyer ? "Buyer" : "Seller"}):</span>{" "}
-              {(isByBuyer ? buyerCompany : sellerCompany) ?? shortAddr(disputeOpenedBy)}
+              {(isByBuyer ? buyerCompany : sellerCompany) ?? shortAddr(openedBy)}
             </p>
           )}
           {disputeReason && (
