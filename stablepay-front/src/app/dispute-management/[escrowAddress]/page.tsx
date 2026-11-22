@@ -8,9 +8,10 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminDisputeDetail } from "@/services/admin";
 import { API_URL, PLATFORM_ADDRESS, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
 import { authFetch } from "@/lib/authFetch";
-import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle, formatUSDC, calcFeeBase, formatDate, formatDateTime } from "@/lib/formatters";
+import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle, calcFeeBase, formatDate, formatDateTime } from "@/lib/formatters";
 import { useMounted } from "@/hooks/useMounted";
 import { useNow } from "@/hooks/useNow";
+import { MilestonePayment } from "@/components/project/MilestonePayment";
 
 /** Compact "2d 3h" / "3h 10m" / "5m" style remaining-time label. */
 function formatDuration(ms: number): string {
@@ -51,7 +52,7 @@ export default function AdminProjectDisputesPage() {
   const [activeResolveId, setActiveResolveId] = useState<string | null>(null);
   const [escrowMeta, setEscrowMeta] = useState<{ title?: string | null; buyer?: string; seller?: string; buyerCompany?: string | null; sellerCompany?: string | null } | null>(null);
   const [correctionWindowDays, setCorrectionWindowDays] = useState<number | null>(null);
-  const [backendMilestones, setBackendMilestones] = useState<Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; resolutionNote?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }>>({});
+  const [backendMilestones, setBackendMilestones] = useState<Record<number, { label?: string | null; sellerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; resolutionNote?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }>>({});
 
   const lastResolveIdRef = useRef<string | null>(null);
   // Decision note per dispute. Saved after the resolve tx confirms, so a failed or
@@ -73,9 +74,9 @@ export default function AdminProjectDisputesPage() {
           setEscrowMeta({ title: data.title, buyer: data.buyer, seller: data.seller, buyerCompany: data.buyerCompany, sellerCompany: data.sellerCompany });
           setCorrectionWindowDays(data.correctionWindowDays ?? 7);
           if (Array.isArray(data.milestones)) {
-            const map: Record<number, { label?: string | null; sellerAward?: string | null; buyerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; resolutionNote?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }> = {};
+            const map: Record<number, { label?: string | null; sellerAward?: string | null; paidAt?: string | null; deliveryReference?: string | null; disputeReason?: string | null; escalationReason?: string | null; sellerResponse?: string | null; resolutionNote?: string | null; isEscalated?: boolean; disputeOpenedAt?: string | null }> = {};
             for (const m of data.milestones) {
-              map[m.milestoneIndex] = { label: m.label, sellerAward: m.sellerAward, buyerAward: m.buyerAward, paidAt: m.paidAt, deliveryReference: m.deliveryReference, disputeReason: m.disputeReason, escalationReason: m.escalationReason, sellerResponse: m.sellerResponse, resolutionNote: m.resolutionNote, isEscalated: m.isEscalated, disputeOpenedAt: m.disputeOpenedAt };
+              map[m.milestoneIndex] = { label: m.label, sellerAward: m.sellerAward, paidAt: m.paidAt, deliveryReference: m.deliveryReference, disputeReason: m.disputeReason, escalationReason: m.escalationReason, sellerResponse: m.sellerResponse, resolutionNote: m.resolutionNote, isEscalated: m.isEscalated, disputeOpenedAt: m.disputeOpenedAt };
             }
             setBackendMilestones(map);
           }
@@ -422,51 +423,12 @@ export default function AdminProjectDisputesPage() {
                 </div>
 
                 {isResolved && (
-                  <div className="rounded-lg border border-zinc-900 bg-white px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Settlement</p>
-                    {(() => {
-                      const gross = BigInt(dispute.amount);
-                      const disputeFeeAmt = calcFeeBase(gross, DISPUTE_FEE_BPS);
-                      const sellerAwardRaw = backendMilestones[dispute.milestoneIndex]?.sellerAward ?? optimisticAwards[dispute.id];
-                      if (!sellerAwardRaw) {
-                        return (
-                          <div className="text-xs text-zinc-400 italic">
-                            Loading settlement details…
-                          </div>
-                        );
-                      }
-                      const sellerGross = BigInt(sellerAwardRaw);
-                      const baseFeeAmt = calcFeeBase(sellerGross, PLATFORM_FEE_BPS);
-                      const net = sellerGross - baseFeeAmt;
-                      const buyerAwardRaw = backendMilestones[dispute.milestoneIndex]?.buyerAward;
-                      const fallbackRefund = gross - sellerGross - disputeFeeAmt;
-                      const buyerRefund = buyerAwardRaw
-                        ? BigInt(buyerAwardRaw)
-                        : fallbackRefund > 0n ? fallbackRefund : 0n;
-                      return (
-                        <>
-                          <div className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-xs">
-                            <span className="text-zinc-500">Amount</span>
-                            <span className="text-zinc-800">{formatUSDC(gross)} USDC</span>
-                            <span className="text-zinc-500">Dispute fee</span>
-                            <span className="text-zinc-700">{formatUSDC(disputeFeeAmt)} USDC <span className="text-zinc-400">(1%)</span></span>
-                            <span className="text-zinc-500">Platform fee</span>
-                            <span className="text-zinc-700">{formatUSDC(baseFeeAmt)} USDC <span className="text-zinc-400">(2.5% of seller&apos;s share)</span></span>
-                            {buyerRefund > 0n && (
-                              <>
-                                <span className="text-zinc-500">Refunded</span>
-                                <span className="text-zinc-700">{formatUSDC(buyerRefund)} USDC</span>
-                              </>
-                            )}
-                          </div>
-                          <div className="mt-2 flex items-center justify-between border-t border-zinc-200 pt-2 text-xs">
-                            <span className="font-medium text-zinc-700">Paid to seller</span>
-                            <span className="font-bold text-sm text-zinc-900">{formatUSDC(net)} USDC</span>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
+                  <MilestonePayment
+                    amount={dispute.amount}
+                    status="RESOLVED"
+                    hadDispute
+                    sellerAward={backendMilestones[dispute.milestoneIndex]?.sellerAward ?? optimisticAwards[dispute.id]}
+                  />
                 )}
                 {isResolved && (() => {
                   const note = savedNotes[dispute.id] ?? backendMilestones[dispute.milestoneIndex]?.resolutionNote;

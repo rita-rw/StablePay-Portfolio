@@ -18,7 +18,6 @@ export function MilestonePayment({ amount, status, hadDispute, sellerAward }: Mi
   const isDisputePaid = status === "PAID" && hadDispute;
   const isDisputeRefunded = status === "REFUNDED" && hadDispute;
   const isDisputeOutcome = isDisputeResolved || isDisputePaid || isDisputeRefunded;
-  const isPaid = status === "PAID";
 
   // Same integer math as the contract, in USDC base units — avoids float
   // rounding drift (e.g. 0.97 instead of the real 0.975).
@@ -77,7 +76,7 @@ export function MilestonePayment({ amount, status, hadDispute, sellerAward }: Mi
         )}
       </div>
       <div className="mt-2 flex items-center justify-between border-t border-zinc-200 pt-2">
-        <span className="font-medium text-zinc-700">{isPaid ? "Paid to seller" : "Seller receives"}</span>
+        <span className="font-medium text-zinc-700">Paid to seller</span>
         <span className="font-bold text-sm text-zinc-900">
           {formatUSDC(netBase)} USDC
         </span>
