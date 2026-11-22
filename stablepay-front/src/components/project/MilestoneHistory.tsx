@@ -116,6 +116,17 @@ export function MilestoneHistory({
               {formatDate(disputeOpenedAt)}
             </p>
           )}
+          {isDisputeOutcome && m.disputeEscalatedAt && (
+            <p className="mt-1 text-zinc-700">
+              <span className="font-medium text-zinc-600">Seller escalated to admin:</span>{" "}
+              {formatDate(m.disputeEscalatedAt)}
+            </p>
+          )}
+          {isDisputeOutcome && escalationReason && (
+            <p className="mt-1 whitespace-pre-wrap break-words text-zinc-800">
+              <span className="font-medium text-zinc-600">Escalation reason:</span> {escalationReason}
+            </p>
+          )}
           {isDisputeOutcome && m.paidAt && (
             <p className="mt-1 text-zinc-700">
               <span className="font-medium text-zinc-600">Settled:</span>{" "}
