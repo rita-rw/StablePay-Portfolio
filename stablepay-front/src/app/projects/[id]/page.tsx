@@ -11,7 +11,7 @@ import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, milestoneStatusBadge, decodeTitle, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, decodeTitle, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { ProjectTimeline, type ProjectEvent } from "@/components/project/ProjectTimeline";
 import { ProjectInfoCard } from "@/components/project/ProjectInfoCard";
@@ -23,6 +23,8 @@ import { SellerAwaitingApproval } from "@/components/project/SellerAwaitingAppro
 import { DeliveryForm } from "@/components/project/DeliveryForm";
 import { EscalateDispute } from "@/components/project/EscalateDispute";
 import { DisputeResponseForm } from "@/components/project/DisputeResponseForm";
+import { MilestoneStatusBadge } from "@/components/project/MilestoneStatusBadge";
+import { DisputeTimeoutButton } from "@/components/project/DisputeTimeoutButton";
 import { type TxAction } from "@/lib/tx";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
@@ -1487,10 +1489,11 @@ export default function ProjectDetailPage() {
               ? "PAID"
               : m.status;
             const processingAs = processingMilestones.get(m.milestoneIndex);
+            const isProcessing = processingAs != null;
             const locallySubmitted = confirmedSubmits.has(m.milestoneIndex);
             const locallyDisputed = confirmedDisputes.has(m.milestoneIndex);
             const showProcessingBadge =
-              processingAs != null &&
+              isProcessing &&
               !(processingAs === "SUBMITTED" && locallySubmitted) &&
               !(processingAs === "DISPUTED" && locallyDisputed) &&
               !(processingAs === "PAID" && locallyPaid);
@@ -1499,12 +1502,11 @@ export default function ProjectDetailPage() {
               : locallyDisputed && displayStatus === "SUBMITTED"
               ? "DISPUTED"
               : displayStatus;
-            const milestoneBadge = milestoneStatusBadge(badgeStatus, !!m.disputeOpenedAt);
             // Seller's options when the buyer has disputed this milestone
             const sellerCanAnswerDispute =
               isSeller &&
               displayStatus === "DISPUTED" &&
-              !processingMilestones.has(m.milestoneIndex) &&
+              !isProcessing &&
               m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase();
             const inCorrectionWindow = isDisputeResubmitWindow(m.disputeOpenedAt);
             const approvingThis = approveIndex === m.milestoneIndex;
@@ -1515,19 +1517,7 @@ export default function ProjectDetailPage() {
             >
               <div className="mb-2 flex items-start justify-between gap-3">
                 <MilestoneTitle index={m.milestoneIndex} label={m.label} />
-                {showProcessingBadge ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 border border-orange-200 px-3 py-1 text-xs font-medium text-orange-600">
-                    <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${milestoneBadge.color}`}>
-                    {milestoneBadge.label}
-                  </span>
-                )}
+                <MilestoneStatusBadge status={badgeStatus} hadDispute={!!m.disputeOpenedAt} processing={showProcessingBadge} />
               </div>
               <MilestoneHistory
                 milestone={m}
@@ -1546,7 +1536,7 @@ export default function ProjectDetailPage() {
                 buyerCompany={escrowMeta?.buyerCompany}
                 sellerCompany={escrowMeta?.sellerCompany}
               />
-              {isBuyer && displayStatus === "SUBMITTED" && !processingMilestones.has(m.milestoneIndex) && !locallyDisputed && !locallyPaid && (
+              {isBuyer && displayStatus === "SUBMITTED" && !isProcessing && !locallyDisputed && !locallyPaid && (
                 <BuyerMilestoneActions
                   releaseAt={autoReleaseAt(m.submittedAt)}
                   now={now}
@@ -1587,7 +1577,7 @@ export default function ProjectDetailPage() {
                   claimBusyElsewhere={(isClaimPending || isClaimConfirming) && claimIndex !== m.milestoneIndex}
                 />
               )}
-              {isSeller && displayStatus === "PENDING" && !processingMilestones.has(m.milestoneIndex) && !locallySubmitted && (
+              {isSeller && displayStatus === "PENDING" && !isProcessing && !locallySubmitted && (
                 <DeliveryForm
                   placeholder="Delivery reference (URL, IPFS hash, description...)"
                   buttonLabel="Submit Delivery"
@@ -1653,7 +1643,7 @@ export default function ProjectDetailPage() {
                   error={sellerResponseError[m.milestoneIndex]}
                 />
               )}
-              {isPlatform && (displayStatus === "DISPUTED" || displayStatus === "ESCALATED") && !processingMilestones.has(m.milestoneIndex) && (
+              {isPlatform && (displayStatus === "DISPUTED" || displayStatus === "ESCALATED") && !isProcessing && (
                 <div className="mt-3">
                   <a
                     href={`/dispute-management/${escrowAddress}`}
@@ -1663,26 +1653,19 @@ export default function ProjectDetailPage() {
                   </a>
                 </div>
               )}
-              {(isBuyer || isSeller) && displayStatus === "DISPUTED" && !processingMilestones.has(m.milestoneIndex) &&
+              {(isBuyer || isSeller) && displayStatus === "DISPUTED" && !isProcessing &&
                 isDisputeTimeoutReady(m.disputeOpenedAt) && (
-                <div className="mt-3">
-                  <button
-                    onClick={() => handleClaimDisputeTimeout(m.milestoneIndex)}
-                    disabled={isDisputeTimeoutPending || isDisputeTimeoutConfirming}
-                    className="w-full rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {isDisputeTimeoutPending && timeoutIndex === m.milestoneIndex
-                      ? "Confirm in Wallet..."
-                      : isDisputeTimeoutConfirming && timeoutIndex === m.milestoneIndex
-                      ? "Waiting for Confirmation..."
-                      : isBuyer
-                      ? `Claim Timeout Refund (${dayLabel(disputeTimeoutDays)} elapsed)`
-                      : "Close Dispute (refund buyer)"}
-                  </button>
-                  {disputeTimeoutError && timeoutIndex === m.milestoneIndex && (
-                    <p className="mt-1 text-xs text-red-500">{parseContractError(disputeTimeoutError)}</p>
-                  )}
-                </div>
+                <DisputeTimeoutButton
+                  isBuyer={isBuyer}
+                  timeoutLabel={dayLabel(disputeTimeoutDays)}
+                  close={{
+                    onClick: () => handleClaimDisputeTimeout(m.milestoneIndex),
+                    isPending: isDisputeTimeoutPending && timeoutIndex === m.milestoneIndex,
+                    isConfirming: isDisputeTimeoutConfirming && timeoutIndex === m.milestoneIndex,
+                    error: timeoutIndex === m.milestoneIndex ? disputeTimeoutError : null,
+                  }}
+                  busyElsewhere={(isDisputeTimeoutPending || isDisputeTimeoutConfirming) && timeoutIndex !== m.milestoneIndex}
+                />
               )}
             </div>
             );
