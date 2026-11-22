@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
@@ -1348,12 +1349,12 @@ export default function ProjectDetailPage() {
           <p className="mb-4 text-sm text-zinc-800">
             You have been invited to this project. To accept or reject, you must first register your company on StablePay.
           </p>
-          <a
+          <Link
             href={`/register?redirect=/projects/${id}`}
             className="inline-block rounded-lg bg-primary px-5 py-2 text-sm text-white transition-colors hover:brightness-110"
           >
             Register Company
-          </a>
+          </Link>
         </div>
       )}
 
@@ -1645,12 +1646,12 @@ export default function ProjectDetailPage() {
               )}
               {isPlatform && (displayStatus === "DISPUTED" || displayStatus === "ESCALATED") && !isProcessing && (
                 <div className="mt-3">
-                  <a
+                  <Link
                     href={`/dispute-management/${escrowAddress}`}
                     className="flex w-full items-center justify-center rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
                   >
                     Handle Dispute →
-                  </a>
+                  </Link>
                 </div>
               )}
               {(isBuyer || isSeller) && displayStatus === "DISPUTED" && !isProcessing &&
