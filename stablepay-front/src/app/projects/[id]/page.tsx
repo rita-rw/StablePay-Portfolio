@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
+import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { erc20Abi, formatUnits, keccak256, toHex, type Abi } from "viem";
 import { Pencil } from "lucide-react";
@@ -11,6 +11,7 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
+import { useWriteContractOnce } from "@/hooks/useWriteContractOnce";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, decodeTitle, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
@@ -422,7 +423,7 @@ export default function ProjectDetailPage() {
     data: approveTxHash,
     isPending: isApprovePending,
     error: approveError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess } =
     useWaitForTransactionReceipt({
@@ -435,7 +436,7 @@ export default function ProjectDetailPage() {
     data: fundTxHash,
     isPending: isFundPending,
     error: fundError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isFundConfirming, isSuccess: isFundSuccess } =
     useWaitForTransactionReceipt({
@@ -622,7 +623,7 @@ export default function ProjectDetailPage() {
     data: submitTxHash,
     isPending: isSubmitPending,
     error: submitError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isSubmitConfirming, isSuccess: isSubmitSuccess } =
     useWaitForTransactionReceipt({
@@ -635,7 +636,7 @@ export default function ProjectDetailPage() {
     data: approveMilestoneTxHash,
     isPending: isApproveMilestonePending,
     error: approveMilestoneError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isApproveMilestoneConfirming, isSuccess: isApproveMilestoneSuccess } =
     useWaitForTransactionReceipt({
@@ -648,7 +649,7 @@ export default function ProjectDetailPage() {
     data: cancelTxHash,
     isPending: isCancelPending,
     error: cancelError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isCancelConfirming, isSuccess: isCancelSuccess } =
     useWaitForTransactionReceipt({
@@ -661,7 +662,7 @@ export default function ProjectDetailPage() {
     data: claimTxHash,
     isPending: isClaimPending,
     error: claimError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isClaimConfirming, isSuccess: isClaimSuccess } =
     useWaitForTransactionReceipt({
@@ -674,7 +675,7 @@ export default function ProjectDetailPage() {
     data: openDisputeTxHash,
     isPending: isOpenDisputePending,
     error: openDisputeError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isOpenDisputeConfirming, isSuccess: isOpenDisputeSuccess } =
     useWaitForTransactionReceipt({
@@ -687,7 +688,7 @@ export default function ProjectDetailPage() {
     data: resubmitTxHash,
     isPending: isResubmitPending,
     error: resubmitError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isResubmitConfirming, isSuccess: isResubmitSuccess } =
     useWaitForTransactionReceipt({
@@ -700,7 +701,7 @@ export default function ProjectDetailPage() {
     data: disputeTimeoutTxHash,
     isPending: isDisputeTimeoutPending,
     error: disputeTimeoutError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isDisputeTimeoutConfirming, isSuccess: isDisputeTimeoutSuccess } =
     useWaitForTransactionReceipt({
@@ -713,7 +714,7 @@ export default function ProjectDetailPage() {
     data: acceptTxHash,
     isPending: isAcceptPending,
     error: acceptError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isAcceptConfirming, isSuccess: isAcceptSuccess } =
     useWaitForTransactionReceipt({
@@ -726,7 +727,7 @@ export default function ProjectDetailPage() {
     data: rejectTxHash,
     isPending: isRejectPending,
     error: rejectError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isRejectConfirming, isSuccess: isRejectSuccess } =
     useWaitForTransactionReceipt({
@@ -739,7 +740,7 @@ export default function ProjectDetailPage() {
     data: escalateTxHash,
     isPending: isEscalatePending,
     error: escalateError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isEscalateConfirming, isSuccess: isEscalateSuccess } =
     useWaitForTransactionReceipt({

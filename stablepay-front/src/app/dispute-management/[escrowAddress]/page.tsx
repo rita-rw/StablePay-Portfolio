@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAccount, useReadContract, useReadContracts, useWalletClient, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount, useReadContract, useReadContracts, useWalletClient, useWaitForTransactionReceipt } from "wagmi";
 import { formatUnits, parseUnits, type Abi } from "viem";
 import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminDisputeDetail } from "@/services/admin";
@@ -10,6 +10,7 @@ import { API_URL, PLATFORM_ADDRESS, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/
 import { authFetch } from "@/lib/authFetch";
 import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle, calcFeeBase, formatDate, formatDateTime } from "@/lib/formatters";
 import { useMounted } from "@/hooks/useMounted";
+import { useWriteContractOnce } from "@/hooks/useWriteContractOnce";
 import { useNow } from "@/hooks/useNow";
 import { MilestonePayment } from "@/components/project/MilestonePayment";
 
@@ -166,7 +167,7 @@ export default function AdminProjectDisputesPage() {
     data: resolveTxHash,
     isPending: isResolvePending,
     error: resolveError,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isResolveConfirming, isSuccess: isResolveSuccess } =
     useWaitForTransactionReceipt({ hash: resolveTxHash, query: { enabled: !!resolveTxHash } });

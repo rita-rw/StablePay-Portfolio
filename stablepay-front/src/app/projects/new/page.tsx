@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
   useAccount,
-  useWriteContract,
   useWaitForTransactionReceipt,
   useWalletClient,
 } from "wagmi";
@@ -14,6 +13,7 @@ import { validateMilestones, MAX_MILESTONES } from "@/lib/escrow-validation";
 import { useFactoryConfig } from "@/hooks/useFactoryConfig";
 import { useUser } from "@/hooks/useUser";
 import { useMounted } from "@/hooks/useMounted";
+import { useWriteContractOnce } from "@/hooks/useWriteContractOnce";
 import { seedProject, saveProjectMetadata } from "@/services/projects";
 import { FACTORY_ADDRESS, USDC_ADDRESS, PLATFORM_FEE_BPS } from "@/lib/constants";
 import { parseFactoryError, formatUSDC, calcFeeBase, shortAddr } from "@/lib/formatters";
@@ -42,7 +42,7 @@ export default function CreateProjectPage() {
     data: txHash,
     isPending,
     error,
-  } = useWriteContract();
+  } = useWriteContractOnce();
 
   const { isLoading: isConfirming, isSuccess, data: receipt } =
     useWaitForTransactionReceipt({ hash: txHash });
