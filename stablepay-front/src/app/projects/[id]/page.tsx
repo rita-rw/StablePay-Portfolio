@@ -1405,7 +1405,7 @@ export default function ProjectDetailPage() {
 
       {activeTab === "overview" && (<>
 
-      {isFunded === false && !isFundSuccess && enrichedMilestones.length > 0 && (
+      {!hasFunded && enrichedMilestones.length > 0 && (
         <div className="mb-6 space-y-3">
           <h2 className="text-lg font-semibold">Milestones</h2>
           {enrichedMilestones.map((m) => {
@@ -1445,7 +1445,7 @@ export default function ProjectDetailPage() {
         <ProjectInvitation accept={acceptTx} reject={rejectTx} />
       )}
 
-      {isBuyer && (isFunded || isFundSuccess) && allMilestonesPending && !isCancelled && !isCancelSuccess && (
+      {isBuyer && hasFunded && allMilestonesPending && !isCancelled && !isCancelSuccess && (
         <div className="mb-6 rounded-lg border border-red-200 p-4">
           <p className="mb-2 text-sm text-zinc-800">
             No work has started yet. You can cancel this project and recover all funds.
@@ -1472,14 +1472,14 @@ export default function ProjectDetailPage() {
           <p className="text-sm text-red-700">
             {isRejected
               ? "This project was rejected by the seller."
-              : isFunded
+              : hasFunded
               ? "This project has been cancelled and all funds have been returned to the buyer."
               : "This project has been cancelled."}
           </p>
         </div>
       )}
 
-      {(isFunded || isFundSuccess) && enrichedMilestones.length > 0 && (
+      {hasFunded && enrichedMilestones.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-lg font-semibold">Milestones</h2>
           {enrichedMilestones.map((m) => {
