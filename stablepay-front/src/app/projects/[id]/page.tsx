@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWalletClient, usePublicClient } from "wagmi";
+import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWalletClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { erc20Abi, formatUnits, keccak256, toHex, type Abi } from "viem";
 import { Pencil } from "lucide-react";
@@ -359,51 +359,6 @@ export default function ProjectDetailPage() {
     }, 2000);
     return () => clearTimeout(timer);
   }, [enrichedMilestones, escrowAddress]);
-
-  // Fetch sellerAward from on-chain events for resolved milestones missing backend data
-  const publicClient = usePublicClient();
-  const [onChainAwards, setOnChainAwards] = useState<Record<number, string>>({});
-  // Track milestone indices where the on-chain fetch was already attempted (success or fail)
-  const onChainFetchAttempted = useRef<Set<number>>(new Set());
-
-  useEffect(() => {
-    if (!publicClient || !escrowAddress) return;
-    const resolvedWithoutAward = enrichedMilestones.filter(
-      (m) =>
-        ["RESOLVED", "PAID"].includes(m.status) &&
-        !!m.disputeOpenedAt &&
-        !m.sellerAward &&
-        !(m.milestoneIndex in onChainAwards) &&
-        !onChainFetchAttempted.current.has(m.milestoneIndex)
-    );
-    if (resolvedWithoutAward.length === 0) return;
-
-    // Mark all as attempted immediately so we never retry on 413/failure
-    resolvedWithoutAward.forEach((m) => onChainFetchAttempted.current.add(m.milestoneIndex));
-
-    publicClient.getBlockNumber().then((currentBlock) => {
-      const fromBlock = currentBlock > 5000n ? currentBlock - 5000n : 0n;
-      return publicClient.getContractEvents({
-        address: escrowAddress,
-        abi: StablePayEscrowABI.abi as Abi,
-        eventName: "DisputeResolved",
-        fromBlock,
-      });
-    })
-      .then((logs) => {
-        const awards: Record<number, string> = {};
-        for (const log of logs) {
-          const args = log.args as { milestoneIndex?: bigint; sellerAward?: bigint };
-          if (args.milestoneIndex !== undefined && args.sellerAward !== undefined) {
-            awards[Number(args.milestoneIndex)] = args.sellerAward.toString();
-          }
-        }
-        if (Object.keys(awards).length > 0) {
-          setOnChainAwards((prev) => ({ ...prev, ...awards }));
-        }
-      })
-      .catch(() => {});
-  }, [publicClient, escrowAddress, enrichedMilestones, onChainAwards]);
 
   const { data: sellerAccepted, refetch: refetchSellerAccepted } = useReadContract({
     address: escrowAddress,
@@ -1532,7 +1487,7 @@ export default function ProjectDetailPage() {
                 disputeOpenedAt={m.disputeOpenedAt ?? (locallyDisputed ? new Date().toISOString() : undefined)}
                 sellerResponse={savedSellerResponses[m.milestoneIndex] ?? m.sellerResponse}
                 escalationReason={m.escalationReason ?? escalationReasons[m.milestoneIndex]}
-                sellerAward={m.sellerAward ?? onChainAwards[m.milestoneIndex]}
+                sellerAward={m.sellerAward}
                 buyer={buyer as string | undefined}
                 buyerCompany={escrowMeta?.buyerCompany}
                 sellerCompany={escrowMeta?.sellerCompany}
