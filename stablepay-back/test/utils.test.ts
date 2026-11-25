@@ -34,6 +34,11 @@ describe("sanitize", () => {
   it("trims surrounding whitespace", () => {
     assert.equal(sanitize("  hello  "), "hello");
   });
+
+  it("keeps <, > and & as plain text instead of HTML entities", () => {
+    assert.equal(sanitize("Step 1 -> step 2, x < y & z"), "Step 1 -> step 2, x < y & z");
+    assert.equal(sanitize("R&D AB"), "R&D AB");
+  });
 });
 
 describe("parseAddress", () => {
