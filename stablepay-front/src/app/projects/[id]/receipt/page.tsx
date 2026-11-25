@@ -7,7 +7,7 @@ import { useWalletClient } from "wagmi";
 import { fetchProjectDetail } from "@/services/projects";
 import { fetchUser } from "@/services/users";
 import { BASESCAN_URL, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
-import { decodeTitle, formatUSDC, calcFeeBase } from "@/lib/formatters";
+import { formatUSDC, calcFeeBase } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import type { Milestone } from "@/types/escrow";
 
@@ -187,7 +187,7 @@ export default function ReceiptPage() {
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-3xl font-black uppercase tracking-tight text-zinc-900">Payment Receipt</h1>
-              <p className="mt-1 text-sm text-zinc-600">{escrow.title ? decodeTitle(escrow.title) : "Untitled Project"}</p>
+              <p className="mt-1 text-sm text-zinc-600">{escrow.title || "Untitled Project"}</p>
             </div>
             <div className="text-right">
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Date</p>

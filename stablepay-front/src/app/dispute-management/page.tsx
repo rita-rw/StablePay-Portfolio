@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
-import { shortAddr, decodeTitle, formatDate } from "@/lib/formatters";
+import { shortAddr, formatDate } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import { useMounted } from "@/hooks/useMounted";
 import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
@@ -178,7 +178,7 @@ export default function AdminPage() {
               <div>
                 <p className="font-semibold text-zinc-900 group-hover:text-primary transition-colors">
                   {project.title
-                    ? decodeTitle(project.title)
+                    ? project.title
                     : shortAddr(project.escrowAddress)}
                 </p>
                 <p className="mt-0.5 text-xs text-zinc-700">

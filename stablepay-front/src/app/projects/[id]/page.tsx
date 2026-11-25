@@ -13,7 +13,7 @@ import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { useWriteContractOnce } from "@/hooks/useWriteContractOnce";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, decodeTitle, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
+import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { ProjectTimeline, type ProjectEvent } from "@/components/project/ProjectTimeline";
 import { ProjectInfoCard } from "@/components/project/ProjectInfoCard";
@@ -416,10 +416,10 @@ export default function ProjectDetailPage() {
     !!(address && seller && address.toLowerCase() === (seller as string).toLowerCase());
   const isPlatform = !!(address && PLATFORM_ADDRESS && address.toLowerCase() === PLATFORM_ADDRESS.toLowerCase());
 
-  const displayTitle = decodeTitle(escrowMeta?.title || "Untitled Project");
+  const displayTitle = escrowMeta?.title || "Untitled Project";
 
   const startEditTitle = () => {
-    setTitleDraft(escrowMeta?.title ? decodeTitle(escrowMeta.title) : "");
+    setTitleDraft(escrowMeta?.title || "");
     setTitleError(null);
     setIsEditingTitle(true);
   };

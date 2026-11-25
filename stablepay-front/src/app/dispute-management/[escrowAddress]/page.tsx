@@ -8,7 +8,7 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { fetchAdminDisputeDetail } from "@/services/admin";
 import { API_URL, PLATFORM_ADDRESS, PLATFORM_FEE_BPS, DISPUTE_FEE_BPS } from "@/lib/constants";
 import { authFetch } from "@/lib/authFetch";
-import { parseContractError, shortAddr, getMilestoneStatus, decodeTitle, calcFeeBase, formatDate, formatDateTime } from "@/lib/formatters";
+import { parseContractError, shortAddr, getMilestoneStatus, calcFeeBase, formatDate, formatDateTime } from "@/lib/formatters";
 import { useMounted } from "@/hooks/useMounted";
 import { useWriteContractOnce } from "@/hooks/useWriteContractOnce";
 import { useNow } from "@/hooks/useNow";
@@ -259,7 +259,7 @@ export default function AdminProjectDisputesPage() {
   if (!isConnected || address?.toLowerCase() !== PLATFORM_ADDRESS?.toLowerCase()) return null;
 
   const projectTitle = escrowMeta?.title
-    ? decodeTitle(escrowMeta.title)
+    ? escrowMeta.title
     : shortAddr(escrowAddress);
   const displayBuyer = (buyer as string) ?? escrowMeta?.buyer;
   const displaySeller = (seller as string) ?? escrowMeta?.seller;

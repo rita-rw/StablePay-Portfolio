@@ -45,15 +45,6 @@ export function calcFeeBase(amountBase: bigint, feeBps: bigint): bigint {
   return (amountBase * feeBps) / 10_000n;
 }
 
-export function decodeTitle(title: string): string {
-  return title
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-}
-
 export function parseContractError(error: Error | null): string | null {
   if (!error) return null;
   const msg = error.message;

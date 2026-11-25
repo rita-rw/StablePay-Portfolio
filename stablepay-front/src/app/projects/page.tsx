@@ -7,7 +7,7 @@ import Link from "next/link";
 import { formatUnits } from "viem";
 import { fetchUserProjects, fetchAdminProjects } from "@/services/projects";
 import { PLATFORM_ADDRESS } from "@/lib/constants";
-import { getDisplayStatus, statusBadge, decodeTitle, formatDate, shortAddr } from "@/lib/formatters";
+import { getDisplayStatus, statusBadge, formatDate, shortAddr } from "@/lib/formatters";
 import type { Escrow } from "@/types/escrow";
 import { useMounted } from "@/hooks/useMounted";
 import { useEscrowStatuses } from "@/hooks/useEscrowStatuses";
@@ -240,7 +240,7 @@ function ProjectsList() {
                   <div className="mb-2 flex items-start justify-between gap-4">
                     <div>
                       <span className="font-semibold text-zinc-900 group-hover:text-primary transition-colors">
-                        {decodeTitle(escrow.title || "Untitled Project")}
+                        {escrow.title || "Untitled Project"}
                       </span>
                       <p className="font-mono text-xs text-zinc-400 mt-0.5">
                         {shortAddr(escrow.id)}
@@ -287,7 +287,7 @@ function ProjectsList() {
                     <div className="mb-2 flex items-start justify-between gap-4">
                       <div>
                         <span className="font-semibold text-zinc-900 group-hover:text-primary transition-colors">
-                          {decodeTitle(escrow.title || "Untitled Project")}
+                          {escrow.title || "Untitled Project"}
                         </span>
                         <p className="font-mono text-xs text-zinc-400 mt-0.5">
                           {shortAddr(escrow.id)}
