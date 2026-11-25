@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWalletClient } from "wagmi";
+import { useAccount, useReadContract, useReadContracts, useWalletClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { erc20Abi, formatUnits, keccak256, toHex, type Abi } from "viem";
 import { Pencil } from "lucide-react";
@@ -11,7 +11,7 @@ import StablePayEscrowABI from "@/abi/StablePayEscrow.json";
 import { useUser } from "@/hooks/useUser";
 import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
-import { useWriteContractOnce } from "@/hooks/useWriteContractOnce";
+import { useTx } from "@/hooks/useTx";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
 import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
@@ -27,7 +27,6 @@ import { EscalateDispute } from "@/components/project/EscalateDispute";
 import { DisputeResponseForm } from "@/components/project/DisputeResponseForm";
 import { MilestoneStatusBadge } from "@/components/project/MilestoneStatusBadge";
 import { DisputeTimeoutButton } from "@/components/project/DisputeTimeoutButton";
-import { type TxAction } from "@/lib/tx";
 import { setWith, setWithout, omitKeys } from "@/lib/collections";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
@@ -322,37 +321,14 @@ export default function ProjectDetailPage() {
     args: address && escrowAddress ? [address, escrowAddress] : undefined,
   });
 
-  const {
-    writeContract: writeApprove,
-    data: approveTxHash,
-    isPending: isApprovePending,
-    error: approveError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess } =
-    useWaitForTransactionReceipt({
-      hash: approveTxHash,
-      query: { enabled: !!approveTxHash },
-    });
-
-  const {
-    writeContract: writeFund,
-    data: fundTxHash,
-    isPending: isFundPending,
-    error: fundError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isFundConfirming, isSuccess: isFundSuccess } =
-    useWaitForTransactionReceipt({
-      hash: fundTxHash,
-      query: { enabled: !!fundTxHash },
-    });
+  const approveUsdcTx = useTx();
+  const fundTx = useTx();
 
   useEffect(() => {
-    if (isApproveSuccess) {
+    if (approveUsdcTx.isSuccess) {
       refetchAllowance();
     }
-  }, [isApproveSuccess, refetchAllowance]);
+  }, [approveUsdcTx.isSuccess, refetchAllowance]);
 
   const hasEnoughAllowance =
     allowance !== undefined &&
@@ -467,185 +443,84 @@ export default function ProjectDetailPage() {
   // Tracks which milestones are waiting for backend to confirm the new status.
   // Map<milestoneIndex, expectedStatus> e.g. Map(0 → "PAID")
   const [processingMilestones, setProcessingMilestones] = useState<Map<number, string>>(new Map());
-  const lastApprovedIndexRef = useRef<number | null>(null);
-  const lastClaimIndexRef = useRef<number | null>(null);
-  const lastSubmittedIndexRef = useRef<number | null>(null);
-  const lastDisputedIndexRef = useRef<number | null>(null);
-  const lastResubmitIndexRef = useRef<number | null>(null);
-  const lastTimeoutIndexRef = useRef<number | null>(null);
-  // Which card is in a wallet flow. State, not the refs above: those are only
-  // read in effects, and reading them while rendering is a hooks error.
-  const [approveIndex, setApproveIndex] = useState<number | null>(null);
-  const [claimIndex, setClaimIndex] = useState<number | null>(null);
-  const [submitIndex, setSubmitIndex] = useState<number | null>(null);
-  const [disputeIndex, setDisputeIndex] = useState<number | null>(null);
-  const [resubmitIndex, setResubmitIndex] = useState<number | null>(null);
-  const [timeoutIndex, setTimeoutIndex] = useState<number | null>(null);
-  const [escalateIndex, setEscalateIndex] = useState<number | null>(null);
   const pendingDeliveryRef = useRef<{ milestoneIndex: number; reference: string } | null>(null);
   const pendingResubmitRef = useRef<{ milestoneIndex: number; reference: string } | null>(null);
   const pendingDisputeRef = useRef<{ milestoneIndex: number; reason: string } | null>(null);
-
-  const {
-    writeContract: writeSubmit,
-    data: submitTxHash,
-    isPending: isSubmitPending,
-    error: submitError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isSubmitConfirming, isSuccess: isSubmitSuccess } =
-    useWaitForTransactionReceipt({
-      hash: submitTxHash,
-      query: { enabled: !!submitTxHash },
-    });
-
-  const {
-    writeContract: writeApproveMilestone,
-    data: approveMilestoneTxHash,
-    isPending: isApproveMilestonePending,
-    error: approveMilestoneError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isApproveMilestoneConfirming, isSuccess: isApproveMilestoneSuccess } =
-    useWaitForTransactionReceipt({
-      hash: approveMilestoneTxHash,
-      query: { enabled: !!approveMilestoneTxHash },
-    });
-
-  const {
-    writeContract: writeCancelEscrow,
-    data: cancelTxHash,
-    isPending: isCancelPending,
-    error: cancelError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isCancelConfirming, isSuccess: isCancelSuccess } =
-    useWaitForTransactionReceipt({
-      hash: cancelTxHash,
-      query: { enabled: !!cancelTxHash },
-    });
-
-  const {
-    writeContract: writeClaimAutoApproval,
-    data: claimTxHash,
-    isPending: isClaimPending,
-    error: claimError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isClaimConfirming, isSuccess: isClaimSuccess } =
-    useWaitForTransactionReceipt({
-      hash: claimTxHash,
-      query: { enabled: !!claimTxHash },
-    });
-
-  const {
-    writeContract: writeOpenDispute,
-    data: openDisputeTxHash,
-    isPending: isOpenDisputePending,
-    error: openDisputeError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isOpenDisputeConfirming, isSuccess: isOpenDisputeSuccess } =
-    useWaitForTransactionReceipt({
-      hash: openDisputeTxHash,
-      query: { enabled: !!openDisputeTxHash },
-    });
-
-  const {
-    writeContract: writeResubmit,
-    data: resubmitTxHash,
-    isPending: isResubmitPending,
-    error: resubmitError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isResubmitConfirming, isSuccess: isResubmitSuccess } =
-    useWaitForTransactionReceipt({
-      hash: resubmitTxHash,
-      query: { enabled: !!resubmitTxHash },
-    });
-
-  const {
-    writeContract: writeClaimDisputeTimeout,
-    data: disputeTimeoutTxHash,
-    isPending: isDisputeTimeoutPending,
-    error: disputeTimeoutError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isDisputeTimeoutConfirming, isSuccess: isDisputeTimeoutSuccess } =
-    useWaitForTransactionReceipt({
-      hash: disputeTimeoutTxHash,
-      query: { enabled: !!disputeTimeoutTxHash },
-    });
-
-  const {
-    writeContract: writeAcceptProject,
-    data: acceptTxHash,
-    isPending: isAcceptPending,
-    error: acceptError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isAcceptConfirming, isSuccess: isAcceptSuccess } =
-    useWaitForTransactionReceipt({
-      hash: acceptTxHash,
-      query: { enabled: !!acceptTxHash },
-    });
-
-  const {
-    writeContract: writeRejectProject,
-    data: rejectTxHash,
-    isPending: isRejectPending,
-    error: rejectError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isRejectConfirming, isSuccess: isRejectSuccess } =
-    useWaitForTransactionReceipt({
-      hash: rejectTxHash,
-      query: { enabled: !!rejectTxHash },
-    });
-
-  const {
-    writeContract: writeEscalate,
-    data: escalateTxHash,
-    isPending: isEscalatePending,
-    error: escalateError,
-  } = useWriteContractOnce();
-
-  const { isLoading: isEscalateConfirming, isSuccess: isEscalateSuccess } =
-    useWaitForTransactionReceipt({
-      hash: escalateTxHash,
-      query: { enabled: !!escalateTxHash },
-    });
-
-  // Refetch sellerAccepted after accept/reject confirms
-  useEffect(() => {
-    if (isAcceptSuccess) refetchEscrow();
-  }, [isAcceptSuccess, refetchEscrow]);
-
-  useEffect(() => {
-    if (!isRejectSuccess) return;
-    refetchEscrow();
-    // Fetch the timeline now and again once the listener has written the rejection
-    fetchEvents();
-    const timeout = setTimeout(fetchEvents, 4000);
-    return () => clearTimeout(timeout);
-  }, [isRejectSuccess, refetchEscrow, fetchEvents]);
-
-  // A wallet relay (e.g. MetaMask Smart Transactions) can report an error for a
-  // tx that still went through. Re-read the chain so the page shows what happened.
-  useEffect(() => {
-    if (!acceptError && !rejectError) return;
-    refetchEscrow();
-    const timeout = setTimeout(refetchEscrow, 4000);
-    return () => clearTimeout(timeout);
-  }, [acceptError, rejectError, refetchEscrow]);
-
-  // Track escalated milestones for processing spinner
-  const lastEscalateIndexRef = useRef<number | null>(null);
   const pendingEscalationRef = useRef<{ milestoneIndex: number; reason: string } | null>(null);
 
-  useEffect(() => {
-    if (!isEscalateSuccess || lastEscalateIndexRef.current === null) return;
-    setProcessingMilestones((prev) => new Map(prev).set(lastEscalateIndexRef.current!, "ESCALATED"));
+  // A confirmed milestone tx: show the card as processing until the backend has the new status
+  const markProcessing = (index: number, expectedStatus: string) =>
+    setProcessingMilestones((prev) => new Map(prev).set(index, expectedStatus));
+
+  const approveMilestoneTx = useTx((index) => {
+    markProcessing(index, "PAID");
+    setConfirmedPaids((prev) => setWith(prev, index));
+  });
+
+  const claimTx = useTx((index) => {
+    markProcessing(index, "PAID");
+    setConfirmedPaids((prev) => setWith(prev, index));
+  });
+
+  const submitTx = useTx((index) => {
+    markProcessing(index, "SUBMITTED");
+    setConfirmedSubmits((prev) => setWith(prev, index));
+
+    // Save delivery reference to backend only after tx confirms.
+    // The card switches to the submitted layout at this point — once — and
+    // stays there while the listener catches up.
+    if (pendingDeliveryRef.current) {
+      const { milestoneIndex, reference } = pendingDeliveryRef.current;
+      pendingDeliveryRef.current = null;
+      setOptimisticDeliveries((prev) => ({ ...prev, [milestoneIndex]: reference }));
+      if (API_URL) {
+        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, { deliveryReference: reference }).then((ok) => {
+          if (ok) return;
+          // Retry exhausted — roll back optimistic state and restore input
+          setConfirmedSubmits((prev) => setWithout(prev, [milestoneIndex]));
+          setOptimisticDeliveries((prev) => omitKeys(prev, [milestoneIndex]));
+          setDeliveryInputs((prev) => ({ ...prev, [milestoneIndex]: reference }));
+          setDeliverySaveError((prev) => ({ ...prev, [milestoneIndex]: "Could not save delivery reference. Please try again." }));
+        });
+      }
+    }
+  });
+
+  const openDisputeTx = useTx((index) => {
+    markProcessing(index, "DISPUTED");
+    setConfirmedDisputes((prev) => setWith(prev, index));
+    setDisputeExpanded((prev) => ({ ...prev, [index]: false }));
+    setDisputeInputs((prev) => omitKeys(prev, [index]));
+
+    if (pendingDisputeRef.current) {
+      const { milestoneIndex, reason } = pendingDisputeRef.current;
+      pendingDisputeRef.current = null;
+      setOptimisticDisputes((prev) => ({ ...prev, [milestoneIndex]: reason }));
+      if (API_URL) {
+        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/dispute`, { disputeReason: reason });
+      }
+    }
+  });
+
+  const resubmitTx = useTx((index) => {
+    markProcessing(index, "SUBMITTED");
+
+    if (pendingResubmitRef.current) {
+      const { milestoneIndex, reference } = pendingResubmitRef.current;
+      pendingResubmitRef.current = null;
+      if (API_URL) {
+        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, { deliveryReference: reference }).then((ok) => {
+          if (ok) return;
+          // Retry exhausted — restore input to the frozen value and show error
+          setResubmitInputs((prev) => ({ ...prev, [milestoneIndex]: reference }));
+          setDeliverySaveError((prev) => ({ ...prev, [milestoneIndex]: "Could not save delivery reference. Please try again." }));
+        });
+      }
+    }
+  });
+
+  const escalateTx = useTx((index) => {
+    markProcessing(index, "ESCALATED");
 
     // Save the text only after the tx confirms — the backend checks it against the new on-chain hash
     if (pendingEscalationRef.current) {
@@ -655,10 +530,38 @@ export default function ProjectDetailPage() {
         postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/escalation-reason`, { escalationReason: reason });
       }
     }
-  }, [isEscalateSuccess, escrowAddress]);
+  });
+
+  const disputeTimeoutTx = useTx((index) => markProcessing(index, "REFUNDED"));
+  const cancelTx = useTx();
+  const acceptTx = useTx();
+  const rejectTx = useTx();
+
+  // Refetch sellerAccepted after accept/reject confirms
+  useEffect(() => {
+    if (acceptTx.isSuccess) refetchEscrow();
+  }, [acceptTx.isSuccess, refetchEscrow]);
+
+  useEffect(() => {
+    if (!rejectTx.isSuccess) return;
+    refetchEscrow();
+    // Fetch the timeline now and again once the listener has written the rejection
+    fetchEvents();
+    const timeout = setTimeout(fetchEvents, 4000);
+    return () => clearTimeout(timeout);
+  }, [rejectTx.isSuccess, refetchEscrow, fetchEvents]);
+
+  // A wallet relay (e.g. MetaMask Smart Transactions) can report an error for a
+  // tx that still went through. Re-read the chain so the page shows what happened.
+  useEffect(() => {
+    if (!acceptTx.error && !rejectTx.error) return;
+    refetchEscrow();
+    const timeout = setTimeout(refetchEscrow, 4000);
+    return () => clearTimeout(timeout);
+  }, [acceptTx.error, rejectTx.error, refetchEscrow]);
 
   function handleAcceptProject() {
-    writeAcceptProject({
+    acceptTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "acceptProject",
@@ -666,7 +569,7 @@ export default function ProjectDetailPage() {
   }
 
   function handleRejectProject() {
-    writeRejectProject({
+    rejectTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "rejectProject",
@@ -676,15 +579,13 @@ export default function ProjectDetailPage() {
   function handleEscalate(milestoneIndex: number) {
     const reason = escalationReasons[milestoneIndex]?.trim();
     if (!reason) return;
-    lastEscalateIndexRef.current = milestoneIndex;
-    setEscalateIndex(milestoneIndex);
     pendingEscalationRef.current = { milestoneIndex, reason };
-    writeEscalate({
+    escalateTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "sellerEscalate",
       args: [BigInt(milestoneIndex), keccak256(toHex(reason))],
-    });
+    }, milestoneIndex);
   }
 
   async function handleSaveSellerResponse(milestoneIndex: number) {
@@ -707,91 +608,6 @@ export default function ProjectDetailPage() {
       setSellerResponseSaving(null);
     }
   }
-
-
-  // When a tx confirms, add that milestone to the processing map (waiting for backend)
-  useEffect(() => {
-    if (!isApproveMilestoneSuccess || lastApprovedIndexRef.current === null) return;
-    const index = lastApprovedIndexRef.current;
-    setProcessingMilestones((prev) => new Map(prev).set(index, "PAID"));
-    setConfirmedPaids((prev) => setWith(prev, index));
-  }, [isApproveMilestoneSuccess]);
-
-  useEffect(() => {
-    if (!isClaimSuccess || lastClaimIndexRef.current === null) return;
-    const index = lastClaimIndexRef.current;
-    setProcessingMilestones((prev) => new Map(prev).set(index, "PAID"));
-    setConfirmedPaids((prev) => setWith(prev, index));
-  }, [isClaimSuccess]);
-
-  useEffect(() => {
-    if (!isSubmitSuccess || lastSubmittedIndexRef.current === null) return;
-    const index = lastSubmittedIndexRef.current;
-    setProcessingMilestones((prev) => new Map(prev).set(index, "SUBMITTED"));
-    setConfirmedSubmits((prev) => setWith(prev, index));
-
-    // Save delivery reference to backend only after tx confirms.
-    // The card switches to the submitted layout at this point — once — and
-    // stays there while the listener catches up.
-    if (pendingDeliveryRef.current) {
-      const { milestoneIndex, reference } = pendingDeliveryRef.current;
-      pendingDeliveryRef.current = null;
-      setOptimisticDeliveries((prev) => ({ ...prev, [milestoneIndex]: reference }));
-      if (API_URL) {
-        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, { deliveryReference: reference }).then((ok) => {
-          if (ok) return;
-          // Retry exhausted — roll back optimistic state and restore input
-          setConfirmedSubmits((prev) => setWithout(prev, [milestoneIndex]));
-          setOptimisticDeliveries((prev) => omitKeys(prev, [milestoneIndex]));
-          setDeliveryInputs((prev) => ({ ...prev, [milestoneIndex]: reference }));
-          setDeliverySaveError((prev) => ({ ...prev, [milestoneIndex]: "Could not save delivery reference. Please try again." }));
-        });
-      }
-    }
-  }, [isSubmitSuccess, escrowAddress]);
-
-  useEffect(() => {
-    if (!isOpenDisputeSuccess || lastDisputedIndexRef.current === null) return;
-    const index = lastDisputedIndexRef.current;
-    setProcessingMilestones((prev) => new Map(prev).set(index, "DISPUTED"));
-    setConfirmedDisputes((prev) => setWith(prev, index));
-
-    setDisputeExpanded((prev) => ({ ...prev, [index]: false }));
-    setDisputeInputs((prev) => omitKeys(prev, [index]));
-
-    if (pendingDisputeRef.current) {
-      const { milestoneIndex, reason } = pendingDisputeRef.current;
-      pendingDisputeRef.current = null;
-      setOptimisticDisputes((prev) => ({ ...prev, [milestoneIndex]: reason }));
-      if (API_URL) {
-        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/dispute`, { disputeReason: reason });
-      }
-    }
-  }, [isOpenDisputeSuccess, escrowAddress]);
-
-  useEffect(() => {
-    if (!isResubmitSuccess || lastResubmitIndexRef.current === null) return;
-    setProcessingMilestones((prev) => new Map(prev).set(lastResubmitIndexRef.current!, "SUBMITTED"));
-
-    if (pendingResubmitRef.current) {
-      const { milestoneIndex, reference } = pendingResubmitRef.current;
-      pendingResubmitRef.current = null;
-      if (API_URL) {
-        postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, { deliveryReference: reference }).then((ok) => {
-          if (ok) return;
-          // Retry exhausted — restore input to the frozen value and show error
-          setResubmitInputs((prev) => ({ ...prev, [milestoneIndex]: reference }));
-          setDeliverySaveError((prev) => ({ ...prev, [milestoneIndex]: "Could not save delivery reference. Please try again." }));
-        });
-      }
-    }
-  }, [isResubmitSuccess, escrowAddress]);
-
-  useEffect(() => {
-    if (!isDisputeTimeoutSuccess || lastTimeoutIndexRef.current === null) return;
-    setProcessingMilestones((prev) => new Map(prev).set(lastTimeoutIndexRef.current!, "REFUNDED"));
-  }, [isDisputeTimeoutSuccess]);
-
 
   // Poll backend every 2s while any milestone is processing.
   // Also trigger an immediate events fetch so syncSingleEscrow runs.
@@ -836,7 +652,7 @@ export default function ProjectDetailPage() {
 
   function handleApprove() {
     if (!totalAmount) return;
-    writeApprove({
+    approveUsdcTx.write({
       address: USDC_ADDRESS,
       abi: erc20Abi,
       functionName: "approve",
@@ -845,7 +661,7 @@ export default function ProjectDetailPage() {
   }
 
   function handleFund() {
-    writeFund({
+    fundTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "fund",
@@ -853,29 +669,29 @@ export default function ProjectDetailPage() {
   }
 
   useEffect(() => {
-    if (isFundSuccess) {
+    if (fundTx.isSuccess) {
       fetchMilestones();
       // Re-fetch timeline after a short delay so the listener has time to write fundedAt
       setTimeout(() => fetchEvents(), 4000);
     }
-  }, [isFundSuccess, fetchMilestones, fetchEvents]);
+  }, [fundTx.isSuccess, fetchMilestones, fetchEvents]);
 
   useEffect(() => {
-    if (!isCancelSuccess) return;
+    if (!cancelTx.isSuccess) return;
     refetchEscrow();
     fetchMilestones();
     fetchEvents();
     const timeout = setTimeout(fetchEvents, 4000);
     return () => clearTimeout(timeout);
-  }, [isCancelSuccess, refetchEscrow, fetchMilestones, fetchEvents]);
+  }, [cancelTx.isSuccess, refetchEscrow, fetchMilestones, fetchEvents]);
 
   // Project-level actions change the status at the top of the page — scroll there so the user sees it.
   // Milestone actions are left out on purpose: the user should stay at the milestone they acted on.
   useEffect(() => {
-    if (isAcceptSuccess || isRejectSuccess || isFundSuccess || isCancelSuccess) {
+    if (acceptTx.isSuccess || rejectTx.isSuccess || fundTx.isSuccess || cancelTx.isSuccess) {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [isAcceptSuccess, isRejectSuccess, isFundSuccess, isCancelSuccess]);
+  }, [acceptTx.isSuccess, rejectTx.isSuccess, fundTx.isSuccess, cancelTx.isSuccess]);
 
   const autoApprovalDays =
     autoApprovalDaysOnChain != null
@@ -914,14 +730,12 @@ export default function ProjectDetailPage() {
   }
 
   function handleClaimAutoApproval(milestoneIndex: number) {
-    setClaimIndex(milestoneIndex);
-    lastClaimIndexRef.current = milestoneIndex;
-    writeClaimAutoApproval({
+    claimTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "claimAutoApproval",
       args: [BigInt(milestoneIndex)],
-    });
+    }, milestoneIndex);
   }
 
   function milestoneHeaderStatus(index: number, status: string): string {
@@ -933,11 +747,11 @@ export default function ProjectDetailPage() {
     return status;
   }
 
-  const isRejected = isRejectSuccess || events.some((e) => e.type === "project_rejected");
+  const isRejected = rejectTx.isSuccess || events.some((e) => e.type === "project_rejected");
   const headerStatus = getDisplayStatus(isRejected ? "SELLER_REJECTED" : "CREATED", {
-    sellerAccepted: Boolean(sellerAccepted || isAcceptSuccess),
-    funded: Boolean(isFunded || isFundSuccess),
-    cancelled: Boolean(isCancelled || isCancelSuccess || isRejectSuccess),
+    sellerAccepted: Boolean(sellerAccepted || acceptTx.isSuccess),
+    funded: Boolean(isFunded || fundTx.isSuccess),
+    cancelled: Boolean(isCancelled || cancelTx.isSuccess || rejectTx.isSuccess),
     hasDispute: enrichedMilestones.some((m) => {
       const status = milestoneHeaderStatus(m.milestoneIndex, m.status);
       return status === "DISPUTED" || status === "ESCALATED";
@@ -963,7 +777,7 @@ export default function ProjectDetailPage() {
     milestones.every((m) => ["PAID", "REFUNDED", "RESOLVED"].includes(m.status));
 
   function handleCancelEscrow() {
-    writeCancelEscrow({
+    cancelTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "cancelEscrow",
@@ -971,19 +785,15 @@ export default function ProjectDetailPage() {
   }
 
   function handleApproveMilestone(milestoneIndex: number) {
-    lastApprovedIndexRef.current = milestoneIndex;
-    setApproveIndex(milestoneIndex);
-    writeApproveMilestone({
+    approveMilestoneTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "approveMilestone",
       args: [BigInt(milestoneIndex)],
-    });
+    }, milestoneIndex);
   }
 
   function handleSubmitDelivery(milestoneIndex: number) {
-    lastSubmittedIndexRef.current = milestoneIndex;
-    setSubmitIndex(milestoneIndex);
     const ref = deliveryInputs[milestoneIndex]?.trim();
     if (!ref) return;
 
@@ -991,55 +801,49 @@ export default function ProjectDetailPage() {
     pendingDeliveryRef.current = { milestoneIndex, reference: ref };
 
     const deliveryHash = keccak256(toHex(ref));
-    writeSubmit({
+    submitTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "submitMilestone",
       args: [BigInt(milestoneIndex), deliveryHash],
-    });
+    }, milestoneIndex);
   }
 
   function handleOpenDispute(milestoneIndex: number) {
     const reason = disputeInputs[milestoneIndex]?.trim();
     if (!reason) return;
-    lastDisputedIndexRef.current = milestoneIndex;
-    setDisputeIndex(milestoneIndex);
     pendingDisputeRef.current = { milestoneIndex, reason };
     const reasonHash = keccak256(toHex(reason));
-    writeOpenDispute({
+    openDisputeTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "openDispute",
       args: [BigInt(milestoneIndex), reasonHash],
-    });
+    }, milestoneIndex);
   }
 
   function handleResubmit(milestoneIndex: number) {
     const ref = resubmitInputs[milestoneIndex]?.trim();
     if (!ref) return;
-    lastResubmitIndexRef.current = milestoneIndex;
-    setResubmitIndex(milestoneIndex);
     // Freeze the reference at sign time — backend save must use this exact value
     pendingResubmitRef.current = { milestoneIndex, reference: ref };
     setDeliverySaveError((prev) => omitKeys(prev, [milestoneIndex]));
     const deliveryHash = keccak256(toHex(ref));
-    writeResubmit({
+    resubmitTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "resubmitDuringDispute",
       args: [BigInt(milestoneIndex), deliveryHash],
-    });
+    }, milestoneIndex);
   }
 
   function handleClaimDisputeTimeout(milestoneIndex: number) {
-    lastTimeoutIndexRef.current = milestoneIndex;
-    setTimeoutIndex(milestoneIndex);
-    writeClaimDisputeTimeout({
+    disputeTimeoutTx.write({
       address: escrowAddress,
       abi: StablePayEscrowABI.abi,
       functionName: "claimDisputeTimeout",
       args: [BigInt(milestoneIndex)],
-    });
+    }, milestoneIndex);
   }
 
   const sessionPending = !mounted || status === "connecting" || status === "reconnecting";
@@ -1076,15 +880,10 @@ export default function ProjectDetailPage() {
   );
   const sellerTotal = grossTotal - feeTotal;
 
-  const hasAccepted = Boolean(sellerAccepted) || isAcceptSuccess;
-  const hasFunded = Boolean(isFunded) || isFundSuccess;
-  const isClosed = Boolean(isCancelled) || isCancelSuccess || isRejectSuccess;
+  const hasAccepted = Boolean(sellerAccepted) || acceptTx.isSuccess;
+  const hasFunded = Boolean(isFunded) || fundTx.isSuccess;
+  const isClosed = Boolean(isCancelled) || cancelTx.isSuccess || rejectTx.isSuccess;
 
-  const acceptTx: TxAction = { onClick: handleAcceptProject, isPending: isAcceptPending, isConfirming: isAcceptConfirming, error: acceptError };
-  const rejectTx: TxAction = { onClick: handleRejectProject, isPending: isRejectPending, isConfirming: isRejectConfirming, error: rejectError };
-  const approveTx: TxAction = { onClick: handleApprove, isPending: isApprovePending, isConfirming: isApproveConfirming, error: approveError };
-  const fundTx: TxAction = { onClick: handleFund, isPending: isFundPending, isConfirming: isFundConfirming, error: fundError };
-  const cancelTx: TxAction = { onClick: handleCancelEscrow, isPending: isCancelPending, isConfirming: isCancelConfirming, error: cancelError };
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -1210,10 +1009,10 @@ export default function ProjectDetailPage() {
       {isBuyer && hasAccepted && !hasFunded && !isClosed && (
         <FundProject
           amount={displayAmount}
-          isApproved={hasEnoughAllowance || isApproveSuccess}
-          approve={approveTx}
-          fund={fundTx}
-          cancel={cancelTx}
+          isApproved={hasEnoughAllowance || approveUsdcTx.isSuccess}
+          approve={{ ...approveUsdcTx.status, onClick: handleApprove }}
+          fund={{ ...fundTx.status, onClick: handleFund }}
+          cancel={{ ...cancelTx.status, onClick: handleCancelEscrow }}
         />
       )}
 
@@ -1275,32 +1074,35 @@ export default function ProjectDetailPage() {
       )}
 
       {isSeller && !hasAccepted && !isClosed && userChecked && isRegistered && (
-        <ProjectInvitation accept={acceptTx} reject={rejectTx} />
+        <ProjectInvitation
+          accept={{ ...acceptTx.status, onClick: handleAcceptProject }}
+          reject={{ ...rejectTx.status, onClick: handleRejectProject }}
+        />
       )}
 
-      {isBuyer && hasFunded && allMilestonesPending && !isCancelled && !isCancelSuccess && (
+      {isBuyer && hasFunded && allMilestonesPending && !isCancelled && !cancelTx.isSuccess && (
         <div className="mb-6 rounded-lg border border-red-200 p-4">
           <p className="mb-2 text-sm text-zinc-800">
             No work has started yet. You can cancel this project and recover all funds.
           </p>
           <button
             onClick={handleCancelEscrow}
-            disabled={isCancelPending || isCancelConfirming}
+            disabled={cancelTx.isPending || cancelTx.isConfirming}
             className="w-full rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
           >
-            {isCancelPending
+            {cancelTx.isPending
               ? "Confirm in Wallet..."
-              : isCancelConfirming
+              : cancelTx.isConfirming
               ? "Waiting for Confirmation..."
               : "Cancel Project & Refund"}
           </button>
-          {cancelError && (
-            <p className="mt-2 text-xs text-red-500">{parseContractError(cancelError)}</p>
+          {cancelTx.error && (
+            <p className="mt-2 text-xs text-red-500">{parseContractError(cancelTx.error)}</p>
           )}
         </div>
       )}
 
-      {(isCancelled || isCancelSuccess) && (
+      {(isCancelled || cancelTx.isSuccess) && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
           <p className="text-sm text-red-700">
             {isRejected
@@ -1317,7 +1119,7 @@ export default function ProjectDetailPage() {
           <h2 className="text-lg font-semibold">Milestones</h2>
           {enrichedMilestones.map((m) => {
             const locallyPaid = confirmedPaids.has(m.milestoneIndex);
-            const displayStatus = (isCancelled || isCancelSuccess) && m.status !== "PAID"
+            const displayStatus = (isCancelled || cancelTx.isSuccess) && m.status !== "PAID"
               ? "REFUNDED"
               : locallyPaid && m.status !== "REFUNDED" && m.status !== "RESOLVED"
               ? "PAID"
@@ -1343,7 +1145,6 @@ export default function ProjectDetailPage() {
               !isProcessing &&
               m.disputeOpenedBy?.toLowerCase() === (buyer as string | undefined)?.toLowerCase();
             const inCorrectionWindow = isDisputeResubmitWindow(m.disputeOpenedAt);
-            const approvingThis = approveIndex === m.milestoneIndex;
             return (
             <div
               key={m.milestoneIndex}
@@ -1374,20 +1175,10 @@ export default function ProjectDetailPage() {
                 <BuyerMilestoneActions
                   releaseAt={autoReleaseAt(m.submittedAt)}
                   now={now}
-                  approve={{
-                    onClick: () => handleApproveMilestone(m.milestoneIndex),
-                    isPending: isApproveMilestonePending && approvingThis,
-                    isConfirming: isApproveMilestoneConfirming && approvingThis,
-                    error: approvingThis ? approveMilestoneError : null,
-                  }}
-                  approveBusyElsewhere={(isApproveMilestonePending || isApproveMilestoneConfirming) && !approvingThis}
-                  dispute={{
-                    onClick: () => handleOpenDispute(m.milestoneIndex),
-                    isPending: isOpenDisputePending && disputeIndex === m.milestoneIndex,
-                    isConfirming: isOpenDisputeConfirming && disputeIndex === m.milestoneIndex,
-                    error: disputeIndex === m.milestoneIndex ? openDisputeError : null,
-                  }}
-                  disputeBusyElsewhere={(isOpenDisputePending || isOpenDisputeConfirming) && disputeIndex !== m.milestoneIndex}
+                  approve={{ ...approveMilestoneTx.forIndex(m.milestoneIndex), onClick: () => handleApproveMilestone(m.milestoneIndex) }}
+                  approveBusyElsewhere={approveMilestoneTx.busyElsewhere(m.milestoneIndex)}
+                  dispute={{ ...openDisputeTx.forIndex(m.milestoneIndex), onClick: () => handleOpenDispute(m.milestoneIndex) }}
+                  disputeBusyElsewhere={openDisputeTx.busyElsewhere(m.milestoneIndex)}
                   disputeOpen={!!disputeExpanded[m.milestoneIndex]}
                   onDisputeOpenChange={(open) => setDisputeExpanded((prev) => ({ ...prev, [m.milestoneIndex]: open }))}
                   disputeReason={disputeInputs[m.milestoneIndex] ?? ""}
@@ -1402,13 +1193,8 @@ export default function ProjectDetailPage() {
                   releaseAt={autoReleaseAt(m.submittedAt)}
                   now={now}
                   autoApprovalDays={autoApprovalDays}
-                  claim={{
-                    onClick: () => handleClaimAutoApproval(m.milestoneIndex),
-                    isPending: isClaimPending && claimIndex === m.milestoneIndex,
-                    isConfirming: isClaimConfirming && claimIndex === m.milestoneIndex,
-                    error: claimIndex === m.milestoneIndex ? claimError : null,
-                  }}
-                  claimBusyElsewhere={(isClaimPending || isClaimConfirming) && claimIndex !== m.milestoneIndex}
+                  claim={{ ...claimTx.forIndex(m.milestoneIndex), onClick: () => handleClaimAutoApproval(m.milestoneIndex) }}
+                  claimBusyElsewhere={claimTx.busyElsewhere(m.milestoneIndex)}
                 />
               )}
               {isSeller && displayStatus === "PENDING" && !isProcessing && !locallySubmitted && (
@@ -1417,13 +1203,8 @@ export default function ProjectDetailPage() {
                   buttonLabel="Submit Delivery"
                   value={deliveryInputs[m.milestoneIndex] ?? ""}
                   onChange={(value) => setDeliveryInputs((prev) => ({ ...prev, [m.milestoneIndex]: value }))}
-                  send={{
-                    onClick: () => handleSubmitDelivery(m.milestoneIndex),
-                    isPending: isSubmitPending && submitIndex === m.milestoneIndex,
-                    isConfirming: isSubmitConfirming && submitIndex === m.milestoneIndex,
-                    error: submitIndex === m.milestoneIndex ? submitError : null,
-                  }}
-                  busyElsewhere={(isSubmitPending || isSubmitConfirming) && submitIndex !== m.milestoneIndex}
+                  send={{ ...submitTx.forIndex(m.milestoneIndex), onClick: () => handleSubmitDelivery(m.milestoneIndex) }}
+                  busyElsewhere={submitTx.busyElsewhere(m.milestoneIndex)}
                   saveError={deliverySaveError[m.milestoneIndex]}
                 />
               )}
@@ -1435,13 +1216,8 @@ export default function ProjectDetailPage() {
                     buttonLabel="Resubmit Delivery"
                     value={resubmitInputs[m.milestoneIndex] ?? ""}
                     onChange={(value) => setResubmitInputs((prev) => ({ ...prev, [m.milestoneIndex]: value }))}
-                    send={{
-                      onClick: () => handleResubmit(m.milestoneIndex),
-                      isPending: isResubmitPending && resubmitIndex === m.milestoneIndex,
-                      isConfirming: isResubmitConfirming && resubmitIndex === m.milestoneIndex,
-                      error: resubmitIndex === m.milestoneIndex ? resubmitError : null,
-                    }}
-                    busyElsewhere={(isResubmitPending || isResubmitConfirming) && resubmitIndex !== m.milestoneIndex}
+                    send={{ ...resubmitTx.forIndex(m.milestoneIndex), onClick: () => handleResubmit(m.milestoneIndex) }}
+                    busyElsewhere={resubmitTx.busyElsewhere(m.milestoneIndex)}
                     saveError={deliverySaveError[m.milestoneIndex]}
                   />
                   {/* Escalating only skips the correction window, so it is offered only while that window is open */}
@@ -1450,13 +1226,8 @@ export default function ProjectDetailPage() {
                     onOpenChange={(open) => setEscalationExpanded((prev) => ({ ...prev, [m.milestoneIndex]: open }))}
                     reason={escalationReasons[m.milestoneIndex] ?? ""}
                     onReasonChange={(reason) => setEscalationReasons((prev) => ({ ...prev, [m.milestoneIndex]: reason }))}
-                    escalate={{
-                      onClick: () => handleEscalate(m.milestoneIndex),
-                      isPending: isEscalatePending && escalateIndex === m.milestoneIndex,
-                      isConfirming: isEscalateConfirming && escalateIndex === m.milestoneIndex,
-                      error: escalateIndex === m.milestoneIndex ? escalateError : null,
-                    }}
-                    busyElsewhere={(isEscalatePending || isEscalateConfirming) && escalateIndex !== m.milestoneIndex}
+                    escalate={{ ...escalateTx.forIndex(m.milestoneIndex), onClick: () => handleEscalate(m.milestoneIndex) }}
+                    busyElsewhere={escalateTx.busyElsewhere(m.milestoneIndex)}
                   />
                 </>
               )}
@@ -1492,13 +1263,8 @@ export default function ProjectDetailPage() {
                 <DisputeTimeoutButton
                   isBuyer={isBuyer}
                   timeoutLabel={dayLabel(disputeTimeoutDays)}
-                  close={{
-                    onClick: () => handleClaimDisputeTimeout(m.milestoneIndex),
-                    isPending: isDisputeTimeoutPending && timeoutIndex === m.milestoneIndex,
-                    isConfirming: isDisputeTimeoutConfirming && timeoutIndex === m.milestoneIndex,
-                    error: timeoutIndex === m.milestoneIndex ? disputeTimeoutError : null,
-                  }}
-                  busyElsewhere={(isDisputeTimeoutPending || isDisputeTimeoutConfirming) && timeoutIndex !== m.milestoneIndex}
+                  close={{ ...disputeTimeoutTx.forIndex(m.milestoneIndex), onClick: () => handleClaimDisputeTimeout(m.milestoneIndex) }}
+                  busyElsewhere={disputeTimeoutTx.busyElsewhere(m.milestoneIndex)}
                 />
               )}
             </div>
