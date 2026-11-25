@@ -51,6 +51,29 @@ async function postWithRetry(url: string, body: object, attempts = 3): Promise<b
   return false;
 }
 
+type EscrowMeta = {
+  title?: string | null;
+  description?: string | null;
+  buyerCompany?: string | null;
+  sellerCompany?: string | null;
+  correctionWindowDays?: number | null;
+  autoApprovalDays?: number | null;
+  disputeTimeoutDays?: number | null;
+};
+
+/** The public and the signed-in detail calls both land here. Keeps what the other one already set. */
+function mergeMeta(prev: EscrowMeta | null, data: EscrowMeta): EscrowMeta {
+  return {
+    title: data.title ?? prev?.title ?? null,
+    description: data.description ?? prev?.description ?? null,
+    buyerCompany: data.buyerCompany ?? prev?.buyerCompany ?? null,
+    sellerCompany: data.sellerCompany ?? prev?.sellerCompany ?? null,
+    correctionWindowDays: data.correctionWindowDays ?? prev?.correctionWindowDays ?? null,
+    autoApprovalDays: data.autoApprovalDays ?? prev?.autoApprovalDays ?? null,
+    disputeTimeoutDays: data.disputeTimeoutDays ?? prev?.disputeTimeoutDays ?? null,
+  };
+}
+
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { address, isConnected, status } = useAccount();
@@ -59,15 +82,7 @@ export default function ProjectDetailPage() {
   const { isRegistered, checked: userChecked } = useUser();
   const mounted = useMounted();
   const [activeTab, setActiveTab] = useState<"overview" | "timeline">("overview");
-  const [escrowMeta, setEscrowMeta] = useState<{
-    title?: string | null;
-    description?: string | null;
-    buyerCompany?: string | null;
-    sellerCompany?: string | null;
-    correctionWindowDays?: number | null;
-    autoApprovalDays?: number | null;
-    disputeTimeoutDays?: number | null;
-  } | null>(null);
+  const [escrowMeta, setEscrowMeta] = useState<EscrowMeta | null>(null);
   const [metaReady, setMetaReady] = useState(false);
   const [milestonesLoaded, setMilestonesLoaded] = useState(false);
   const [eventsLoaded, setEventsLoaded] = useState(false);
@@ -102,33 +117,14 @@ export default function ProjectDetailPage() {
     if (!apiUrl || !escrowAddress) return;
     let cancelled = false;
 
-    const applyDetail = (data: {
-      title?: string | null;
-      description?: string | null;
-      buyerCompany?: string | null;
-      sellerCompany?: string | null;
-      correctionWindowDays?: number | null;
-      autoApprovalDays?: number | null;
-      disputeTimeoutDays?: number | null;
-    }) => {
-      setEscrowMeta((prev) => ({
-        title: data.title ?? prev?.title ?? null,
-        description: data.description ?? prev?.description ?? null,
-        buyerCompany: data.buyerCompany ?? prev?.buyerCompany ?? null,
-        sellerCompany: data.sellerCompany ?? prev?.sellerCompany ?? null,
-        correctionWindowDays: data.correctionWindowDays ?? prev?.correctionWindowDays ?? null,
-        autoApprovalDays: data.autoApprovalDays ?? prev?.autoApprovalDays ?? null,
-        disputeTimeoutDays: data.disputeTimeoutDays ?? prev?.disputeTimeoutDays ?? null,
-      }));
-      setMetaReady(true);
-    };
-
     // Kept off walletClient on purpose. A signature must not cancel this read,
     // or the page paints Untitled Project from the chain data alone.
     fetch(`${apiUrl}/projects/detail/${escrowAddress}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
-        if (!cancelled && data) applyDetail(data);
+        if (cancelled || !data) return;
+        setEscrowMeta((prev) => mergeMeta(prev, data));
+        setMetaReady(true);
       })
       .catch(() => {});
 
@@ -145,15 +141,7 @@ export default function ProjectDetailPage() {
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
-        setEscrowMeta((prev) => ({
-          title: data.title ?? prev?.title ?? null,
-          description: data.description ?? prev?.description ?? null,
-          buyerCompany: data.buyerCompany ?? prev?.buyerCompany ?? null,
-          sellerCompany: data.sellerCompany ?? prev?.sellerCompany ?? null,
-          correctionWindowDays: data.correctionWindowDays ?? prev?.correctionWindowDays ?? null,
-          autoApprovalDays: data.autoApprovalDays ?? prev?.autoApprovalDays ?? null,
-          disputeTimeoutDays: data.disputeTimeoutDays ?? prev?.disputeTimeoutDays ?? null,
-        }));
+        setEscrowMeta((prev) => mergeMeta(prev, data));
         setMetaReady(true);
       })
       .catch(() => {});
