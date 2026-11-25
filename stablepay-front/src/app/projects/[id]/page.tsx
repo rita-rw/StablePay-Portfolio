@@ -343,23 +343,6 @@ export default function ProjectDetailPage() {
     });
   }, [milestones, onChainMilestones, seller]);
 
-  // Re-fetch milestones from backend when sellerAward is missing for dispute outcomes
-  useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (!apiUrl || !escrowAddress) return;
-    const needsAward = enrichedMilestones.some(
-      (m) => ["RESOLVED", "PAID", "REFUNDED"].includes(m.status) && !!m.disputeOpenedAt && !m.sellerAward
-    );
-    if (!needsAward) return;
-    const timer = setTimeout(() => {
-      fetch(`${apiUrl}/projects/${escrowAddress}/milestones`)
-        .then((r) => r.json())
-        .then((data) => { if (Array.isArray(data)) setMilestones(data); })
-        .catch(() => {});
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [enrichedMilestones, escrowAddress]);
-
   const { data: sellerAccepted, refetch: refetchSellerAccepted } = useReadContract({
     address: escrowAddress,
     abi: StablePayEscrowABI.abi,
@@ -780,12 +763,11 @@ export default function ProjectDetailPage() {
 
   async function handleSaveSellerResponse(milestoneIndex: number) {
     const text = (sellerResponseDrafts[milestoneIndex] ?? "").trim();
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (!text || !apiUrl || !walletClient) return;
+    if (!text || !API_URL || !walletClient) return;
     setSellerResponseSaving(milestoneIndex);
     setSellerResponseError((prev) => ({ ...prev, [milestoneIndex]: "" }));
     try {
-      const res = await authFetch(`${apiUrl}/projects/${escrowAddress}/milestones/${milestoneIndex}/seller-response`, walletClient, {
+      const res = await authFetch(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/seller-response`, walletClient, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sellerResponse: text }),
@@ -1199,9 +1181,8 @@ export default function ProjectDetailPage() {
     return <div className="min-h-screen bg-zinc-50" />;
   }
 
-  const displayAmount = totalAmount
-    ? formatUnits(totalAmount as bigint, 6)
-    : "...";
+  // pageReady guarantees totalAmount is loaded
+  const displayAmount = formatUnits(totalAmount as bigint, 6);
 
   // The contract takes the fee per milestone and rounds down, so sum each fee
   // instead of taking 2.5% of the total — otherwise the last decimal can differ.
