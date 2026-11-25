@@ -51,6 +51,20 @@ async function postWithRetry(url: string, body: object, attempts = 3): Promise<b
   return false;
 }
 
+/** Escrow values read on load. The order here is the order they are unpacked in below. */
+const ESCROW_READS = [
+  "totalAmount",
+  "funded",
+  "cancelled",
+  "BUYER",
+  "SELLER",
+  "milestoneCount",
+  "AUTO_APPROVAL_DAYS",
+  "DISPUTE_TIMEOUT_DAYS",
+  "CORRECTION_WINDOW_DAYS",
+  "sellerAccepted",
+] as const;
+
 type EscrowMeta = {
   title?: string | null;
   description?: string | null;
@@ -223,59 +237,28 @@ export default function ProjectDetailPage() {
     return () => clearInterval(interval);
   }, [fetchMilestones, fetchEvents]);
 
-  const { data: totalAmount } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "totalAmount",
-  });
-
-  const { data: isFunded } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "funded",
-  });
-
-  const { data: isCancelled, refetch: refetchCancelled } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "cancelled",
-  });
-
-  const { data: buyer } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "BUYER",
-  });
-
-  const { data: seller } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "SELLER",
-  });
-
-  const { data: milestoneCount } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "milestoneCount",
-  });
-
-  const { data: autoApprovalDaysOnChain } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "AUTO_APPROVAL_DAYS",
-  });
-
-  const { data: disputeTimeoutDaysOnChain } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "DISPUTE_TIMEOUT_DAYS",
-  });
-
-  const { data: correctionWindowDaysOnChain } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "CORRECTION_WINDOW_DAYS",
-  });
+  // All escrow-level values in one multicall. refetchEscrow re-reads them all (one RPC call).
+  const escrowReadContracts = useMemo(
+    () =>
+      ESCROW_READS.map((functionName) => ({
+        address: escrowAddress,
+        abi: StablePayEscrowABI.abi as Abi,
+        functionName,
+      })),
+    [escrowAddress],
+  );
+  const { data: escrowReads, refetch: refetchEscrow } = useReadContracts({ contracts: escrowReadContracts });
+  // Read straight off the hook data (not via .map) so React Compiler knows the values are not mutated
+  const totalAmount = escrowReads?.[0]?.result;
+  const isFunded = escrowReads?.[1]?.result;
+  const isCancelled = escrowReads?.[2]?.result;
+  const buyer = escrowReads?.[3]?.result;
+  const seller = escrowReads?.[4]?.result;
+  const milestoneCount = escrowReads?.[5]?.result;
+  const autoApprovalDaysOnChain = escrowReads?.[6]?.result;
+  const disputeTimeoutDaysOnChain = escrowReads?.[7]?.result;
+  const correctionWindowDaysOnChain = escrowReads?.[8]?.result;
+  const sellerAccepted = escrowReads?.[9]?.result;
 
   // Read on-chain milestone statuses via multicall
   const milestoneContracts = useMemo(() => {
@@ -330,12 +313,6 @@ export default function ProjectDetailPage() {
       };
     });
   }, [milestones, onChainMilestones, seller]);
-
-  const { data: sellerAccepted, refetch: refetchSellerAccepted } = useReadContract({
-    address: escrowAddress,
-    abi: StablePayEscrowABI.abi,
-    functionName: "sellerAccepted",
-  });
 
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: USDC_ADDRESS,
@@ -676,30 +653,26 @@ export default function ProjectDetailPage() {
 
   // Refetch sellerAccepted after accept/reject confirms
   useEffect(() => {
-    if (isAcceptSuccess) refetchSellerAccepted();
-  }, [isAcceptSuccess, refetchSellerAccepted]);
+    if (isAcceptSuccess) refetchEscrow();
+  }, [isAcceptSuccess, refetchEscrow]);
 
   useEffect(() => {
     if (!isRejectSuccess) return;
-    refetchCancelled();
+    refetchEscrow();
     // Fetch the timeline now and again once the listener has written the rejection
     fetchEvents();
     const timeout = setTimeout(fetchEvents, 4000);
     return () => clearTimeout(timeout);
-  }, [isRejectSuccess, refetchCancelled, fetchEvents]);
+  }, [isRejectSuccess, refetchEscrow, fetchEvents]);
 
   // A wallet relay (e.g. MetaMask Smart Transactions) can report an error for a
   // tx that still went through. Re-read the chain so the page shows what happened.
   useEffect(() => {
     if (!acceptError && !rejectError) return;
-    const recheck = () => {
-      refetchSellerAccepted();
-      refetchCancelled();
-    };
-    recheck();
-    const timeout = setTimeout(recheck, 4000);
+    refetchEscrow();
+    const timeout = setTimeout(refetchEscrow, 4000);
     return () => clearTimeout(timeout);
-  }, [acceptError, rejectError, refetchSellerAccepted, refetchCancelled]);
+  }, [acceptError, rejectError, refetchEscrow]);
 
   // Track escalated milestones for processing spinner
   const lastEscalateIndexRef = useRef<number | null>(null);
@@ -967,12 +940,12 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     if (!isCancelSuccess) return;
-    refetchCancelled();
+    refetchEscrow();
     fetchMilestones();
     fetchEvents();
     const timeout = setTimeout(fetchEvents, 4000);
     return () => clearTimeout(timeout);
-  }, [isCancelSuccess, refetchCancelled, fetchMilestones, fetchEvents]);
+  }, [isCancelSuccess, refetchEscrow, fetchMilestones, fetchEvents]);
 
   // Project-level actions change the status at the top of the page — scroll there so the user sees it.
   // Milestone actions are left out on purpose: the user should stay at the milestone they acted on.
