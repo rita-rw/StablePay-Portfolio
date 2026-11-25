@@ -12,6 +12,8 @@ type ProjectInfoCardProps = {
   counterpartyCompany?: string | null;
   status: { label: string; color: string };
   totalAmount: string;
+  /** Platform fee and seller net, summed per milestone. Omitted when the project is closed (no money moved). */
+  fee?: { amount: string; sellerReceives: string };
   milestoneCount: number;
 };
 
@@ -23,6 +25,7 @@ export function ProjectInfoCard({
   counterpartyCompany,
   status,
   totalAmount,
+  fee,
   milestoneCount,
 }: ProjectInfoCardProps) {
   const [copied, setCopied] = useState(false);
@@ -57,11 +60,19 @@ export function ProjectInfoCard({
           </span>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-100">
+      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-100 sm:grid-cols-3">
         <div>
-          <p className="text-xs font-medium text-zinc-500 mb-1">Total Amount</p>
+          <p className="text-xs font-medium text-zinc-500 mb-1">Buyer pays</p>
           <p className="text-xl font-bold text-zinc-900">{totalAmount} USDC</p>
+          {fee && (
+            <p className="mt-0.5 text-xs text-zinc-500">incl. {fee.amount} USDC platform fee (2.5%)</p>
+          )}
         </div>
+        {fee && (
+          <div>
+            <p className="text-xs font-medium text-zinc-500 mb-1">Seller receives</p>
+            <p className="text-xl font-bold text-emerald-700">{fee.sellerReceives} USDC</p>          </div>
+        )}
         <div>
           <p className="text-xs font-medium text-zinc-500 mb-1">Milestones</p>
           <p className="text-xl font-bold text-zinc-900">{milestoneCount}</p>

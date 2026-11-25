@@ -1203,6 +1203,15 @@ export default function ProjectDetailPage() {
     ? formatUnits(totalAmount as bigint, 6)
     : "...";
 
+  // The contract takes the fee per milestone and rounds down, so sum each fee
+  // instead of taking 2.5% of the total — otherwise the last decimal can differ.
+  const grossTotal = enrichedMilestones.reduce((sum, m) => sum + BigInt(m.amount), 0n);
+  const feeTotal = enrichedMilestones.reduce(
+    (sum, m) => sum + calcFeeBase(BigInt(m.amount), PLATFORM_FEE_BPS),
+    0n,
+  );
+  const sellerTotal = grossTotal - feeTotal;
+
   const hasAccepted = Boolean(sellerAccepted) || isAcceptSuccess;
   const hasFunded = Boolean(isFunded) || isFundSuccess;
   const isClosed = Boolean(isCancelled) || isCancelSuccess || isRejectSuccess;
@@ -1295,6 +1304,11 @@ export default function ProjectDetailPage() {
         counterpartyCompany={isBuyer ? escrowMeta?.sellerCompany : escrowMeta?.buyerCompany}
         status={headerBadge}
         totalAmount={displayAmount}
+        fee={
+          !isClosed && enrichedMilestones.length > 0
+            ? { amount: formatUSDC(feeTotal), sellerReceives: formatUSDC(sellerTotal) }
+            : undefined
+        }
         milestoneCount={Number(milestoneCount)}
       />
 
