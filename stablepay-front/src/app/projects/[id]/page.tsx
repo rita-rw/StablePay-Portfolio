@@ -28,6 +28,7 @@ import { DisputeResponseForm } from "@/components/project/DisputeResponseForm";
 import { MilestoneStatusBadge } from "@/components/project/MilestoneStatusBadge";
 import { DisputeTimeoutButton } from "@/components/project/DisputeTimeoutButton";
 import { type TxAction } from "@/lib/tx";
+import { setWith, setWithout, omitKeys } from "@/lib/collections";
 import { authFetch, hasValidAuth } from "@/lib/authFetch";
 import { renameProjectTitle } from "@/services/projects";
 
@@ -456,47 +457,11 @@ export default function ProjectDetailPage() {
       toClear.push(milestone.milestoneIndex);
     }
     if (toClear.length === 0) return;
-    setDisputeExpanded((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const index of toClear) {
-        if (next[index]) {
-          next[index] = false;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-    setDisputeInputs((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const index of toClear) {
-        if (index in next) {
-          delete next[index];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-    setOptimisticDisputes((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const index of toClear) {
-        if (index in next) {
-          delete next[index];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-    setConfirmedDisputes((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const index of toClear) {
-        if (next.delete(index)) changed = true;
-      }
-      return changed ? next : prev;
-    });
+    // A missing key reads as closed (!!disputeExpanded[i]), so removing it closes the form
+    setDisputeExpanded((prev) => omitKeys(prev, toClear));
+    setDisputeInputs((prev) => omitKeys(prev, toClear));
+    setOptimisticDisputes((prev) => omitKeys(prev, toClear));
+    setConfirmedDisputes((prev) => setWithout(prev, toClear));
   }, [enrichedMilestones]);
 
   // Tracks which milestones are waiting for backend to confirm the new status.
@@ -749,33 +714,21 @@ export default function ProjectDetailPage() {
     if (!isApproveMilestoneSuccess || lastApprovedIndexRef.current === null) return;
     const index = lastApprovedIndexRef.current;
     setProcessingMilestones((prev) => new Map(prev).set(index, "PAID"));
-    setConfirmedPaids((prev) => {
-      const next = new Set(prev);
-      next.add(index);
-      return next;
-    });
+    setConfirmedPaids((prev) => setWith(prev, index));
   }, [isApproveMilestoneSuccess]);
 
   useEffect(() => {
     if (!isClaimSuccess || lastClaimIndexRef.current === null) return;
     const index = lastClaimIndexRef.current;
     setProcessingMilestones((prev) => new Map(prev).set(index, "PAID"));
-    setConfirmedPaids((prev) => {
-      const next = new Set(prev);
-      next.add(index);
-      return next;
-    });
+    setConfirmedPaids((prev) => setWith(prev, index));
   }, [isClaimSuccess]);
 
   useEffect(() => {
     if (!isSubmitSuccess || lastSubmittedIndexRef.current === null) return;
     const index = lastSubmittedIndexRef.current;
     setProcessingMilestones((prev) => new Map(prev).set(index, "SUBMITTED"));
-    setConfirmedSubmits((prev) => {
-      const next = new Set(prev);
-      next.add(index);
-      return next;
-    });
+    setConfirmedSubmits((prev) => setWith(prev, index));
 
     // Save delivery reference to backend only after tx confirms.
     // The card switches to the submitted layout at this point — once — and
@@ -788,12 +741,8 @@ export default function ProjectDetailPage() {
         postWithRetry(`${API_URL}/projects/${escrowAddress}/milestones/${milestoneIndex}/delivery`, { deliveryReference: reference }).then((ok) => {
           if (ok) return;
           // Retry exhausted — roll back optimistic state and restore input
-          setConfirmedSubmits((prev) => {
-            const next = new Set(prev);
-            next.delete(milestoneIndex);
-            return next;
-          });
-          setOptimisticDeliveries((prev) => { const next = { ...prev }; delete next[milestoneIndex]; return next; });
+          setConfirmedSubmits((prev) => setWithout(prev, [milestoneIndex]));
+          setOptimisticDeliveries((prev) => omitKeys(prev, [milestoneIndex]));
           setDeliveryInputs((prev) => ({ ...prev, [milestoneIndex]: reference }));
           setDeliverySaveError((prev) => ({ ...prev, [milestoneIndex]: "Could not save delivery reference. Please try again." }));
         });
@@ -805,19 +754,10 @@ export default function ProjectDetailPage() {
     if (!isOpenDisputeSuccess || lastDisputedIndexRef.current === null) return;
     const index = lastDisputedIndexRef.current;
     setProcessingMilestones((prev) => new Map(prev).set(index, "DISPUTED"));
-    setConfirmedDisputes((prev) => {
-      const next = new Set(prev);
-      next.add(index);
-      return next;
-    });
+    setConfirmedDisputes((prev) => setWith(prev, index));
 
     setDisputeExpanded((prev) => ({ ...prev, [index]: false }));
-    setDisputeInputs((prev) => {
-      if (!(index in prev)) return prev;
-      const next = { ...prev };
-      delete next[index];
-      return next;
-    });
+    setDisputeInputs((prev) => omitKeys(prev, [index]));
 
     if (pendingDisputeRef.current) {
       const { milestoneIndex, reason } = pendingDisputeRef.current;
@@ -889,27 +829,9 @@ export default function ProjectDetailPage() {
       }
     }
     if (changed) setProcessingMilestones(updated);
-    if (syncedSubmits.length > 0) {
-      setConfirmedSubmits((prev) => {
-        const next = new Set(prev);
-        for (const idx of syncedSubmits) next.delete(idx);
-        return next;
-      });
-    }
-    if (syncedDisputes.length > 0) {
-      setConfirmedDisputes((prev) => {
-        const next = new Set(prev);
-        for (const idx of syncedDisputes) next.delete(idx);
-        return next;
-      });
-    }
-    if (syncedPaids.length > 0) {
-      setConfirmedPaids((prev) => {
-        const next = new Set(prev);
-        for (const idx of syncedPaids) next.delete(idx);
-        return next;
-      });
-    }
+    setConfirmedSubmits((prev) => setWithout(prev, syncedSubmits));
+    setConfirmedDisputes((prev) => setWithout(prev, syncedDisputes));
+    setConfirmedPaids((prev) => setWithout(prev, syncedPaids));
   }, [enrichedMilestones, processingMilestones]);
 
   function handleApprove() {
@@ -1099,7 +1021,7 @@ export default function ProjectDetailPage() {
     setResubmitIndex(milestoneIndex);
     // Freeze the reference at sign time — backend save must use this exact value
     pendingResubmitRef.current = { milestoneIndex, reference: ref };
-    setDeliverySaveError((prev) => { const next = { ...prev }; delete next[milestoneIndex]; return next; });
+    setDeliverySaveError((prev) => omitKeys(prev, [milestoneIndex]));
     const deliveryHash = keccak256(toHex(ref));
     writeResubmit({
       address: escrowAddress,
