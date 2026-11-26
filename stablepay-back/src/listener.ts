@@ -1,4 +1,4 @@
-import { createPublicClient, http, decodeEventLog, getAddress } from "viem";
+import { createPublicClient, http, decodeEventLog, getAddress, type AbiEvent, type Address, type Log } from "viem";
 import { baseSepolia } from "viem/chains";
 import { MilestoneStatus } from "../generated/prisma/enums";
 import { prisma } from "./prisma";
@@ -386,6 +386,38 @@ function registerWatcher(name: string, register: (onError: (error: Error) => voi
   watcherUnsubscribers.push(unwatch);
 }
 
+/** The DB key of one milestone. */
+function milestoneKey(escrowAddress: string, milestoneIndex: number) {
+  return { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex } };
+}
+
+/**
+ * Watch one escrow event on every escrow we know about. Each log reaches `handle`
+ * with its decoded args; logs from unknown contracts are skipped, and a failing
+ * handler is logged without stopping the rest of the batch.
+ */
+function watchEscrowEvent<const TEvent extends AbiEvent>(
+  event: TEvent,
+  handle: (escrowAddress: Address, log: Log<bigint, number, false, TEvent, true>) => Promise<void>,
+) {
+  registerWatcher(event.name, (onError) => client.watchEvent({
+    event,
+    strict: true,
+    onError,
+    onLogs: async (logs) => {
+      for (const log of logs) {
+        const escrowAddress = getAddress(log.address);
+        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
+        try {
+          await handle(escrowAddress, log);
+        } catch (err) {
+          console.error(`[listener] ${event.name} DB update failed`, err);
+        }
+      }
+    },
+  }));
+}
+
 async function loadKnownEscrowsFromDb() {
   knownEscrows.clear();
   const escrows = await prisma.escrow.findMany({ select: { id: true } });
@@ -565,504 +597,268 @@ export async function startListener() {
 
       if (shouldAbortStartup(startToken)) return;
 
-  // ── BACKFILL: fetch historical EscrowCreated events if DB is empty ──
-
-  // ── CATCH-UP: sync on-chain state for escrows that may have changed while backend was down ──
-
-  // ── WATCHER 1: EscrowCreated (factory) ──
+      // EscrowCreated comes from the factory; the other events from each escrow.
       registerWatcher("EscrowCreated", (onError) => client.watchContractEvent({
-    address: factoryAddress,
-    abi: [escrowCreatedEvent],
-    eventName: "EscrowCreated",
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const args = log.args as unknown as EscrowCreatedArgs;
+        address: factoryAddress,
+        abi: [escrowCreatedEvent],
+        eventName: "EscrowCreated",
+        onError,
+        onLogs: async (logs) => {
+          for (const log of logs) {
+            const args = log.args as unknown as EscrowCreatedArgs;
 
-        knownEscrows.add(args.escrow.toLowerCase());
+            knownEscrows.add(args.escrow.toLowerCase());
 
-        console.log("[EscrowCreated]", {
-          escrow: args.escrow,
-          buyer: args.buyer,
-          seller: args.seller,
-          token: args.token,
-          totalAmount: args.totalAmount.toString(),
-          milestoneCount: Number(args.milestoneCount),
-          txHash: log.transactionHash,
-        });
+            console.log("[EscrowCreated]", {
+              escrow: args.escrow,
+              buyer: args.buyer,
+              seller: args.seller,
+              token: args.token,
+              totalAmount: args.totalAmount.toString(),
+              milestoneCount: Number(args.milestoneCount),
+              txHash: log.transactionHash,
+            });
 
-        // Look up pre-saved metadata and upsert the escrow atomically.
-        // If the upsert fails after the metadata delete, the transaction rolls back
-        // and the metadata row is preserved — no permanent data loss.
-        let milestoneLabels: string[] = [];
-        try {
-          await prisma.$transaction(async (tx) => {
-            let title: string | null = null;
-            let description: string | null = null;
+            // Look up pre-saved metadata and upsert the escrow atomically.
+            // If the upsert fails after the metadata delete, the transaction rolls back
+            // and the metadata row is preserved — no permanent data loss.
+            let milestoneLabels: string[] = [];
             try {
-              const meta = await tx.projectMetadata.delete({
-                where: { metadataHash: args.metadataHash },
+              await prisma.$transaction(async (tx) => {
+                let title: string | null = null;
+                let description: string | null = null;
+                try {
+                  const meta = await tx.projectMetadata.delete({
+                    where: { metadataHash: args.metadataHash },
+                  });
+                  title = meta.title;
+                  description = meta.description;
+                  milestoneLabels = parseMilestoneLabels(meta.milestoneLabels);
+                } catch {
+                  // Record not found — either never saved or already claimed by a concurrent event
+                }
+
+                await tx.escrow.upsert({
+                  where: { id: args.escrow },
+                  create: {
+                    id: args.escrow,
+                    buyer: args.buyer,
+                    seller: args.seller,
+                    token: args.token,
+                    totalAmount: args.totalAmount.toString(),
+                    milestoneCount: Number(args.milestoneCount),
+                    metadataHash: args.metadataHash,
+                    title,
+                    description,
+                    txHash: log.transactionHash,
+                  },
+                  update: {
+                    txHash: log.transactionHash,
+                    title: title ?? undefined,
+                    description: description ?? undefined,
+                  },
+                });
               });
-              title = meta.title;
-              description = meta.description;
-              milestoneLabels = parseMilestoneLabels(meta.milestoneLabels);
-            } catch {
-              // Record not found — either never saved or already claimed by a concurrent event
+            } catch (err) {
+              console.error("[listener] EscrowCreated DB write failed", err);
+            }
+            // Create Milestone rows directly from chain so we don't depend on POST /projects/seed
+            const count = Number(args.milestoneCount);
+            for (let i = 0; i < count; i++) {
+              try {
+                const result = await client.readContract({
+                  address: args.escrow,
+                  abi: escrowReadAbi,
+                  functionName: "milestones",
+                  args: [BigInt(i)],
+                });
+                const label = milestoneLabelAt(milestoneLabels, i);
+                await prisma.milestone.upsert({
+                  where: { escrowAddress_milestoneIndex: { escrowAddress: args.escrow, milestoneIndex: i } },
+                  create: {
+                    escrowAddress: args.escrow,
+                    milestoneIndex: i,
+                    amount: result[0].toString(),
+                    status: MILESTONE_STATUS_MAP[Number(result[1])] ?? "PENDING",
+                    ...(label ? { label } : {}),
+                  },
+                  update: label ? { label } : {},
+                });
+              } catch (err) {
+                console.error(`[listener] EscrowCreated milestone ${i} create failed`, err);
+              }
             }
 
-            await tx.escrow.upsert({
-              where: { id: args.escrow },
-              create: {
-                id: args.escrow,
-                buyer: args.buyer,
-                seller: args.seller,
-                token: args.token,
-                totalAmount: args.totalAmount.toString(),
-                milestoneCount: Number(args.milestoneCount),
-                metadataHash: args.metadataHash,
-                title,
-                description,
-                txHash: log.transactionHash,
-              },
-              update: {
-                txHash: log.transactionHash,
-                title: title ?? undefined,
-                description: description ?? undefined,
-              },
-            });
-          });
-        } catch (err) {
-          console.error("[listener] EscrowCreated DB write failed", err);
-        }
-        // Create Milestone rows directly from chain so we don't depend on POST /projects/seed
-        const count = Number(args.milestoneCount);
-        for (let i = 0; i < count; i++) {
-          try {
-            const result = await client.readContract({
-              address: args.escrow,
-              abi: escrowReadAbi,
-              functionName: "milestones",
-              args: [BigInt(i)],
-            });
-            const label = milestoneLabelAt(milestoneLabels, i);
-            await prisma.milestone.upsert({
-              where: { escrowAddress_milestoneIndex: { escrowAddress: args.escrow, milestoneIndex: i } },
-              create: {
-                escrowAddress: args.escrow,
-                milestoneIndex: i,
-                amount: result[0].toString(),
-                status: MILESTONE_STATUS_MAP[Number(result[1])] ?? "PENDING",
-                ...(label ? { label } : {}),
-              },
-              update: label ? { label } : {},
-            });
-          } catch (err) {
-            console.error(`[listener] EscrowCreated milestone ${i} create failed`, err);
+            // Send email after DB rows exist so the mailer can look up the escrow
+            void sendNotification("PROJECT_ASSIGNED", args.escrow);
           }
-        }
+        },
+      }));
 
-        // Send email after DB rows exist so the mailer can look up the escrow
-        void sendNotification("PROJECT_ASSIGNED", args.escrow);
-      }
-    },
-  }));
+      console.log("[listener] watching EscrowCreated on", factoryAddress);
 
-  console.log("[listener] watching EscrowCreated on", factoryAddress);
+      watchEscrowEvent(fundedEvent, async (escrowAddress, log) => {
+        const { buyer, amount } = log.args;
+        console.log("[Funded]", { escrow: escrowAddress, buyer, amount: amount.toString(), txHash: log.transactionHash });
+        await prisma.escrow.update({
+          where: { id: escrowAddress },
+          data: { status: "FUNDED", fundedTxHash: log.transactionHash, fundedAt: await blockDate(client, log.blockNumber) },
+        });
+        void sendNotification("PROJECT_FUNDED", escrowAddress);
+      });
 
-  // ── WATCHER 2: Funded (all escrows, single global watcher) ──
-      registerWatcher("Funded", (onError) => client.watchEvent({
-    event: fundedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
+      watchEscrowEvent(milestoneSubmittedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        console.log("[MilestoneSubmitted]", { escrow: escrowAddress, milestoneIndex: index });
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: { status: "SUBMITTED", submittedAt: await blockDate(client, log.blockNumber) },
+        });
+        void sendNotification("MILESTONE_SUBMITTED", escrowAddress);
+      });
 
-        try {
-          const { args } = decodeEventLog({ abi: [fundedEvent], data: log.data, topics: log.topics });
-          const { buyer, amount } = args as { buyer: `0x${string}`; amount: bigint };
+      watchEscrowEvent(milestoneApprovedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        console.log("[MilestoneApproved]", { escrow: escrowAddress, milestoneIndex: index });
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: { status: "PAID", paidAt: await blockDate(client, log.blockNumber), autoApproved: false },
+        });
+        void sendNotification("MILESTONE_APPROVED", escrowAddress);
+      });
 
-          console.log("[Funded]", {
-            escrow: escrowAddress,
-            buyer,
-            amount: amount.toString(),
-            txHash: log.transactionHash,
-          });
+      watchEscrowEvent(milestoneAutoApprovedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        console.log("[MilestoneAutoApproved]", { escrow: escrowAddress, milestoneIndex: index });
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: { status: "PAID", paidAt: await blockDate(client, log.blockNumber), autoApproved: true },
+        });
+        void sendNotification("MILESTONE_APPROVED", escrowAddress);
+      });
 
-          const fundedDate = await blockDate(client, log.blockNumber);
-          await prisma.escrow.update({
-            where: { id: escrowAddress },
-            data: { status: "FUNDED", fundedTxHash: log.transactionHash, fundedAt: fundedDate },
-          });
-          void sendNotification("PROJECT_FUNDED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] Funded DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 3: MilestoneSubmitted (all escrows) ──
-      registerWatcher("MilestoneSubmitted", (onError) => client.watchEvent({
-    event: milestoneSubmittedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [milestoneSubmittedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex } = args as { milestoneIndex: bigint; deliveryHash: `0x${string}` };
-
-          console.log("[MilestoneSubmitted]", {
-            escrow: escrowAddress,
-            milestoneIndex: Number(milestoneIndex),
-          });
-
-          const submittedDate = await blockDate(client, log.blockNumber);
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: { status: "SUBMITTED", submittedAt: submittedDate },
-          });
-          void sendNotification("MILESTONE_SUBMITTED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] MilestoneSubmitted DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 4: MilestoneApproved (all escrows) ──
-      registerWatcher("MilestoneApproved", (onError) => client.watchEvent({
-    event: milestoneApprovedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [milestoneApprovedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex } = args as { milestoneIndex: bigint };
-
-          console.log("[MilestoneApproved]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex) });
-
-          const approvedDate = await blockDate(client, log.blockNumber);
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: { status: "PAID", paidAt: approvedDate, autoApproved: false },
-          });
-          void sendNotification("MILESTONE_APPROVED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] MilestoneApproved DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 5: MilestoneAutoApproved (all escrows) ──
-      registerWatcher("MilestoneAutoApproved", (onError) => client.watchEvent({
-    event: milestoneAutoApprovedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [milestoneAutoApprovedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex } = args as { milestoneIndex: bigint };
-
-          console.log("[MilestoneAutoApproved]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex) });
-
-          const autoApprovedDate = await blockDate(client, log.blockNumber);
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: { status: "PAID", paidAt: autoApprovedDate, autoApproved: true },
-          });
-          void sendNotification("MILESTONE_APPROVED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] MilestoneAutoApproved DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 6: EscrowCancelled (all escrows) ──
-      registerWatcher("EscrowCancelled", (onError) => client.watchEvent({
-    event: escrowCancelledEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
+      watchEscrowEvent(escrowCancelledEvent, async (escrowAddress, log) => {
         console.log("[EscrowCancelled]", { escrow: escrowAddress });
+        await prisma.escrow.update({
+          where: { id: escrowAddress },
+          data: { status: "CANCELLED", cancelledAt: await blockDate(client, log.blockNumber) },
+        });
+        void sendNotification("PROJECT_CANCELLED", escrowAddress);
+      });
 
-        try {
-          const cancelledAt = await blockDate(client, log.blockNumber);
-          await prisma.escrow.update({
-            where: { id: escrowAddress },
-            data: { status: "CANCELLED", cancelledAt },
-          });
-          void sendNotification("PROJECT_CANCELLED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] EscrowCancelled DB update failed", err);
-        }
-      }
-    },
-  }));
+      watchEscrowEvent(milestoneRefundedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        console.log("[MilestoneRefunded]", { escrow: escrowAddress, milestoneIndex: index });
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: { status: "REFUNDED" },
+        });
+      });
 
-  // ── WATCHER 7: MilestoneRefunded (all escrows) ──
-      registerWatcher("MilestoneRefunded", (onError) => client.watchEvent({
-    event: milestoneRefundedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
+      watchEscrowEvent(disputeOpenedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        const { openedBy } = log.args;
+        console.log("[DisputeOpened]", { escrow: escrowAddress, milestoneIndex: index, openedBy });
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: {
+            status: "DISPUTED",
+            disputeOpenedAt: await blockDate(client, log.blockNumber),
+            disputeOpenedBy: getAddress(openedBy),
+          },
+        });
+        void sendNotification("DISPUTE_OPENED", escrowAddress);
+      });
 
-        try {
-          const { args } = decodeEventLog({ abi: [milestoneRefundedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex } = args as { milestoneIndex: bigint; amount: bigint };
+      watchEscrowEvent(milestoneResubmittedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        console.log("[MilestoneResubmitted]", { escrow: escrowAddress, milestoneIndex: index });
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: {
+            status: "SUBMITTED",
+            submittedAt: await blockDate(client, log.blockNumber),
+            // Contract resets the dispute. A later buyer approval must be a normal payout.
+            ...clearedDisputeData(),
+          },
+        });
+        void sendNotification("MILESTONE_RESUBMITTED", escrowAddress);
+      });
 
-          console.log("[MilestoneRefunded]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex) });
+      watchEscrowEvent(disputeResolvedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        const { sellerAward, buyerAward } = log.args;
+        // Mirror the contract logic: PAID = seller got all, REFUNDED = buyer got all, RESOLVED = split
+        const resolvedStatus = buyerAward === 0n ? "PAID" : sellerAward === 0n ? "REFUNDED" : "RESOLVED";
+        console.log("[DisputeResolved]", {
+          escrow: escrowAddress,
+          milestoneIndex: index,
+          sellerAward: sellerAward.toString(),
+          buyerAward: buyerAward.toString(),
+          resolvedStatus,
+        });
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: {
+            status: resolvedStatus,
+            paidAt: await blockDate(client, log.blockNumber),
+            sellerAward: sellerAward.toString(),
+            buyerAward: buyerAward.toString(),
+          },
+        });
+        void sendNotification("DISPUTE_RESOLVED", escrowAddress);
+      });
 
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: { status: "REFUNDED" },
-          });
-        } catch (err) {
-          console.error("[listener] MilestoneRefunded DB update failed", err);
-        }
-      }
-    },
-  }));
+      watchEscrowEvent(disputeTimeoutClaimedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        console.log("[DisputeTimeoutClaimed]", { escrow: escrowAddress, milestoneIndex: index });
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: {
+            status: "REFUNDED",
+            paidAt: await blockDate(client, log.blockNumber),
+            sellerAward: "0",
+            buyerAward: log.args.buyerRefund.toString(),
+          },
+        });
+      });
 
-  // ── WATCHER 8: DisputeOpened (all escrows) ──
-      registerWatcher("DisputeOpened", (onError) => client.watchEvent({
-    event: disputeOpenedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
+      watchEscrowEvent(projectAcceptedEvent, async (escrowAddress, log) => {
+        console.log("[ProjectAccepted]", { escrow: escrowAddress, seller: log.args.seller });
+        await prisma.escrow.update({
+          where: { id: escrowAddress },
+          data: { status: "SELLER_ACCEPTED" },
+        });
+        void sendNotification("PROJECT_ACCEPTED", escrowAddress);
+      });
 
-        try {
-          const { args } = decodeEventLog({ abi: [disputeOpenedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex, openedBy } = args as { milestoneIndex: bigint; openedBy: `0x${string}`; reason: `0x${string}` };
+      watchEscrowEvent(projectRejectedEvent, async (escrowAddress, log) => {
+        console.log("[ProjectRejected]", { escrow: escrowAddress, seller: log.args.seller });
+        await prisma.escrow.update({
+          where: { id: escrowAddress },
+          data: { status: "SELLER_REJECTED", cancelledAt: await blockDate(client, log.blockNumber) },
+        });
+        void sendNotification("PROJECT_REJECTED", escrowAddress);
+      });
 
-          console.log("[DisputeOpened]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex), openedBy });
-
-          const disputeDate = await blockDate(client, log.blockNumber);
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: {
-              status: "DISPUTED",
-              disputeOpenedAt: disputeDate,
-              disputeOpenedBy: getAddress(openedBy),
-            },
-          });
-          void sendNotification("DISPUTE_OPENED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] DisputeOpened DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 9: MilestoneResubmitted (all escrows) ──
-      registerWatcher("MilestoneResubmitted", (onError) => client.watchEvent({
-    event: milestoneResubmittedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [milestoneResubmittedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex } = args as { milestoneIndex: bigint; deliveryHash: `0x${string}` };
-
-          console.log("[MilestoneResubmitted]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex) });
-
-          const submittedDate = await blockDate(client, log.blockNumber);
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: {
-              status: "SUBMITTED",
-              submittedAt: submittedDate,
-              // Contract resets the dispute. A later buyer approval must be a normal payout.
-              ...clearedDisputeData(),
-            },
-          });
-          void sendNotification("MILESTONE_RESUBMITTED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] MilestoneResubmitted DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 10: DisputeResolved (all escrows) ──
-      registerWatcher("DisputeResolved", (onError) => client.watchEvent({
-    event: disputeResolvedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [disputeResolvedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex, sellerAward, buyerAward } = args as { milestoneIndex: bigint; sellerAward: bigint; buyerAward: bigint; platformFee: bigint; disputeFee: bigint };
-
-          // Mirror the contract logic: PAID = seller got all, REFUNDED = buyer got all, RESOLVED = split
-          const resolvedStatus = buyerAward === 0n ? "PAID" : sellerAward === 0n ? "REFUNDED" : "RESOLVED";
-
-          console.log("[DisputeResolved]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex), sellerAward: sellerAward.toString(), buyerAward: buyerAward.toString(), resolvedStatus });
-
-          const resolvedDate = await blockDate(client, log.blockNumber);
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: { status: resolvedStatus, paidAt: resolvedDate, sellerAward: sellerAward.toString(), buyerAward: buyerAward.toString() },
-          });
-          void sendNotification("DISPUTE_RESOLVED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] DisputeResolved DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 11: DisputeTimeoutClaimed (all escrows) ──
-      registerWatcher("DisputeTimeoutClaimed", (onError) => client.watchEvent({
-    event: disputeTimeoutClaimedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [disputeTimeoutClaimedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex, buyerRefund } = args as { milestoneIndex: bigint; buyerRefund: bigint; disputeFee: bigint };
-
-          console.log("[DisputeTimeoutClaimed]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex) });
-
-          const timeoutDate = await blockDate(client, log.blockNumber);
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: {
-              status: "REFUNDED",
-              paidAt: timeoutDate,
-              sellerAward: "0",
-              buyerAward: buyerRefund.toString(),
-            },
-          });
-        } catch (err) {
-          console.error("[listener] DisputeTimeoutClaimed DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 12: ProjectAccepted (all escrows) ──
-      registerWatcher("ProjectAccepted", (onError) => client.watchEvent({
-    event: projectAcceptedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [projectAcceptedEvent], data: log.data, topics: log.topics });
-          const { seller } = args as { seller: `0x${string}` };
-
-          console.log("[ProjectAccepted]", { escrow: escrowAddress, seller });
-
-          await prisma.escrow.update({
-            where: { id: escrowAddress },
-            data: { status: "SELLER_ACCEPTED" },
-          });
-          void sendNotification("PROJECT_ACCEPTED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] ProjectAccepted DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 13: ProjectRejected (all escrows) ──
-      registerWatcher("ProjectRejected", (onError) => client.watchEvent({
-    event: projectRejectedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [projectRejectedEvent], data: log.data, topics: log.topics });
-          const { seller } = args as { seller: `0x${string}` };
-
-          console.log("[ProjectRejected]", { escrow: escrowAddress, seller });
-
-          const cancelledAt = await blockDate(client, log.blockNumber);
-          await prisma.escrow.update({
-            where: { id: escrowAddress },
-            data: { status: "SELLER_REJECTED", cancelledAt },
-          });
-          void sendNotification("PROJECT_REJECTED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] ProjectRejected DB update failed", err);
-        }
-      }
-    },
-  }));
-
-  // ── WATCHER 14: DisputeEscalated (all escrows) ──
-      registerWatcher("DisputeEscalated", (onError) => client.watchEvent({
-    event: disputeEscalatedEvent,
-    onError,
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const escrowAddress = getAddress(log.address);
-        if (!knownEscrows.has(escrowAddress.toLowerCase())) continue;
-
-        try {
-          const { args } = decodeEventLog({ abi: [disputeEscalatedEvent], data: log.data, topics: log.topics });
-          const { milestoneIndex } = args as { milestoneIndex: bigint; reason: `0x${string}` };
-
-          console.log("[DisputeEscalated]", { escrow: escrowAddress, milestoneIndex: Number(milestoneIndex) });
-
-          const [escalatedAt, seller] = await Promise.all([
-            blockDate(client, log.blockNumber),
-            client.readContract({
-              address: escrowAddress,
-              abi: escrowReadAbi,
-              functionName: "SELLER",
-            }),
-          ]);
-
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress, milestoneIndex: Number(milestoneIndex) } },
-            data: {
-              status: "ESCALATED",
-              isEscalated: true,
-              disputeEscalatedAt: escalatedAt,
-              disputeEscalatedBy: getAddress(seller as string),
-            },
-          });
-          void sendNotification("DISPUTE_ESCALATED", escrowAddress);
-        } catch (err) {
-          console.error("[listener] DisputeEscalated DB update failed", err);
-        }
-      }
-    },
-  }));
+      watchEscrowEvent(disputeEscalatedEvent, async (escrowAddress, log) => {
+        const index = Number(log.args.milestoneIndex);
+        console.log("[DisputeEscalated]", { escrow: escrowAddress, milestoneIndex: index });
+        const [escalatedAt, seller] = await Promise.all([
+          blockDate(client, log.blockNumber),
+          client.readContract({ address: escrowAddress, abi: escrowReadAbi, functionName: "SELLER" }),
+        ]);
+        await prisma.milestone.update({
+          where: milestoneKey(escrowAddress, index),
+          data: {
+            status: "ESCALATED",
+            isEscalated: true,
+            disputeEscalatedAt: escalatedAt,
+            disputeEscalatedBy: getAddress(seller as string),
+          },
+        });
+        void sendNotification("DISPUTE_ESCALATED", escrowAddress);
+      });
 
       listenersActive = true;
       markWatcherSuccess();
