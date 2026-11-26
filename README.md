@@ -1,5 +1,7 @@
 # StablePay
 
+[![CI](https://github.com/rita-rw/StablePay-Portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/rita-rw/StablePay-Portfolio/actions/workflows/ci.yml)
+
 A milestone-based escrow platform built on Base, a Layer-2 Ethereum blockchain. Clients and freelancers agree on project milestones upfront — funds are locked in a smart contract and released only when each milestone is approved. Disputes are resolved by the platform, with built-in timeouts and protection mechanisms for both parties.
 
 Started as a team internship project; actively developed and maintained solo since then — see [`PROJECT_HISTORY.md`](PROJECT_HISTORY.md) for what that's involved.
