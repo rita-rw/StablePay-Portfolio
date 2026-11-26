@@ -12,11 +12,15 @@ import { useNow } from "@/hooks/useNow";
 import { useMounted } from "@/hooks/useMounted";
 import { useTx } from "@/hooks/useTx";
 import { USDC_ADDRESS, PLATFORM_ADDRESS, API_URL, PLATFORM_FEE_BPS } from "@/lib/constants";
-import { parseContractError, getMilestoneStatus, getDisplayStatus, statusBadge, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
+import { getMilestoneStatus, getDisplayStatus, statusBadge, formatUSDC, calcFeeBase, dayLabel } from "@/lib/formatters";
 import { MilestoneTitle } from "@/components/shared/MilestoneTitle";
 import { ProjectTimeline, type ProjectEvent } from "@/components/project/ProjectTimeline";
 import { ProjectInfoCard } from "@/components/project/ProjectInfoCard";
 import { ProjectTitle } from "@/components/project/ProjectTitle";
+import { ProjectNotices } from "@/components/project/ProjectNotices";
+import { UnfundedMilestones } from "@/components/project/UnfundedMilestones";
+import { CancelProject } from "@/components/project/CancelProject";
+import { ClosedNotice } from "@/components/project/ClosedNotice";
 import { FundProject } from "@/components/project/FundProject";
 import { ProjectInvitation } from "@/components/project/ProjectInvitation";
 import { MilestoneHistory } from "@/components/project/MilestoneHistory";
@@ -876,36 +880,15 @@ export default function ProjectDetailPage() {
         milestoneCount={Number(milestoneCount)}
       />
 
-      {isSeller && !hasAccepted && !isClosed && userChecked && !isRegistered && (
-        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-          <h2 className="mb-2 text-lg font-semibold">Registration Required</h2>
-          <p className="mb-4 text-sm text-zinc-800">
-            You have been invited to this project. To accept or reject, you must first register your company on StablePay.
-          </p>
-          <Link
-            href={`/register?redirect=/projects/${id}`}
-            className="inline-block rounded-lg bg-primary px-5 py-2 text-sm text-white transition-colors hover:brightness-110"
-          >
-            Register Company
-          </Link>
-        </div>
-      )}
-
-      {isBuyer && !hasAccepted && !hasFunded && !isClosed && (
-        <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
-          <p className="text-sm text-orange-700">
-            Waiting for the seller to accept this project before you can fund it.
-          </p>
-        </div>
-      )}
-
-      {isSeller && hasAccepted && !hasFunded && !isClosed && (
-        <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
-          <p className="text-sm text-orange-700">
-            You accepted this project. Waiting for the buyer to fund the escrow before you can start work.
-          </p>
-        </div>
-      )}
+      <ProjectNotices
+        isBuyer={isBuyer}
+        isSeller={isSeller}
+        hasAccepted={hasAccepted}
+        hasFunded={hasFunded}
+        isClosed={isClosed}
+        needsRegistration={userChecked && !isRegistered}
+        projectId={id}
+      />
 
       {isBuyer && hasAccepted && !hasFunded && !isClosed && (
         <FundProject
@@ -939,39 +922,7 @@ export default function ProjectDetailPage() {
       {activeTab === "overview" && (<>
 
       {!hasFunded && enrichedMilestones.length > 0 && (
-        <div className="mb-6 space-y-3">
-          <h2 className="text-lg font-semibold">Milestones</h2>
-          {enrichedMilestones.map((m) => {
-            const grossBase = BigInt(m.amount);
-            const feeBase = calcFeeBase(grossBase, PLATFORM_FEE_BPS);
-            const sellerReceives = grossBase - feeBase;
-            return (
-              <div
-                key={m.milestoneIndex}
-                className="rounded-xl border border-zinc-300 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <MilestoneTitle index={m.milestoneIndex} label={m.label} />
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Amount {formatUSDC(grossBase)} USDC
-                      {!isClosed && ` · platform fee ${formatUSDC(feeBase)} USDC (2.5%)`}
-                    </p>
-                  </div>
-                  {/* A closed project was never funded — no money moved, so no payout to show */}
-                  {isClosed ? (
-                    <p className="shrink-0 text-xs font-medium text-zinc-500">Not funded</p>
-                  ) : (
-                    <div className="shrink-0 text-right">
-                      <p className="text-xs font-medium text-zinc-500">Seller receives</p>
-                      <p className="font-semibold text-emerald-700">{formatUSDC(sellerReceives)} USDC</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <UnfundedMilestones milestones={enrichedMilestones} isClosed={isClosed} />
       )}
 
       {isSeller && !hasAccepted && !isClosed && userChecked && isRegistered && (
@@ -982,37 +933,11 @@ export default function ProjectDetailPage() {
       )}
 
       {isBuyer && hasFunded && allMilestonesPending && !isCancelled && !cancelTx.isSuccess && (
-        <div className="mb-6 rounded-lg border border-red-200 p-4">
-          <p className="mb-2 text-sm text-zinc-800">
-            No work has started yet. You can cancel this project and recover all funds.
-          </p>
-          <button
-            onClick={handleCancelEscrow}
-            disabled={cancelTx.isPending || cancelTx.isConfirming}
-            className="w-full rounded-lg border border-red-400 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-          >
-            {cancelTx.isPending
-              ? "Confirm in Wallet..."
-              : cancelTx.isConfirming
-              ? "Waiting for Confirmation..."
-              : "Cancel Project & Refund"}
-          </button>
-          {cancelTx.error && (
-            <p className="mt-2 text-xs text-red-500">{parseContractError(cancelTx.error)}</p>
-          )}
-        </div>
+        <CancelProject cancel={{ ...cancelTx.status, onClick: handleCancelEscrow }} />
       )}
 
       {(isCancelled || cancelTx.isSuccess) && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-sm text-red-700">
-            {isRejected
-              ? "This project was rejected by the seller."
-              : hasFunded
-              ? "This project has been cancelled and all funds have been returned to the buyer."
-              : "This project has been cancelled."}
-          </p>
-        </div>
+        <ClosedNotice isRejected={isRejected} hasFunded={hasFunded} />
       )}
 
       {hasFunded && enrichedMilestones.length > 0 && (
