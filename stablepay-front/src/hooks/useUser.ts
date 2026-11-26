@@ -69,12 +69,9 @@ export function useUser() {
           writeStoredUser(key, data);
           setUser(data);
         })
-        .catch(() => {
-          if (cancelled) return;
-          userCache.set(key, null);
-          writeStoredUser(key, null);
-          setUser(null);
-        })
+        // On an error (e.g. 429) keep what we knew: caching null here would show a
+        // registered user as unregistered until the next successful fetch.
+        .catch(() => {})
         .finally(() => {
           if (!cancelled) {
             setLoading(false);

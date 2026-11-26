@@ -3,11 +3,15 @@ import { authFetch } from "@/lib/authFetch";
 import { API_URL } from "@/lib/constants";
 
 /** Public fields without auth; pass walletClient to get private profile (org/email/createdAt) when allowed. */
+/**
+ * The user registered for `address`, or null if there is none (the backend answers 200 + null).
+ * Throws on any error, e.g. 429 — an error must not be read as "not registered".
+ */
 export async function fetchUser(address: string, walletClient?: WalletClient) {
   const res = walletClient
     ? await authFetch(`${API_URL}/users/${address}`, walletClient)
     : await fetch(`${API_URL}/users/${address}`);
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`GET /users failed: ${res.status}`);
   return res.json();
 }
 

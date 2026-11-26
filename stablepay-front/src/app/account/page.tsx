@@ -29,6 +29,7 @@ export default function AccountPage() {
   const mounted = useMounted();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -57,6 +58,10 @@ export default function AccountPage() {
         orgNumber: data.orgNumber ?? "",
         email: data.email ?? "",
       });
+      setLoading(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setLoadError(true);
       setLoading(false);
     });
     return () => {
@@ -99,6 +104,14 @@ export default function AccountPage() {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
         <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <p className="text-sm text-zinc-600">Could not load your account. Please reload the page.</p>
       </div>
     );
   }
