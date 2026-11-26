@@ -35,10 +35,11 @@ const writeLimit = rateLimit({
   message: { error: "Too many requests, please try again later" },
 });
 
-// Lenient limit for read endpoints (GET)
+// Lenient limit for read endpoints (GET). One open project page polls ~3 GETs
+// every 5 s (~540 per 15 min), so this leaves room for a few tabs on one IP.
 const readLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 600,
+  max: 3000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },
