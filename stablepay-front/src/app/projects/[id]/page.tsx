@@ -227,13 +227,21 @@ export default function ProjectDetailPage() {
     fetchEvents();
   }, [fetchEvents]);
 
-  // Background polling so both parties see updates from the other side
+  // Background polling so both parties see updates from the other side.
+  // Skipped while the tab is hidden (a forgotten tab would eat the backend's rate limit),
+  // and caught up as soon as it is shown again.
   useEffect(() => {
-    const interval = setInterval(() => {
+    const poll = () => {
+      if (document.hidden) return;
       fetchMilestones(true);
       fetchEvents();
-    }, 5000);
-    return () => clearInterval(interval);
+    };
+    const interval = setInterval(poll, 5000);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", poll);
+    };
   }, [fetchMilestones, fetchEvents]);
 
   // All escrow-level values in one multicall. refetchEscrow re-reads them all (one RPC call).
