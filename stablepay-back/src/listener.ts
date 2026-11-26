@@ -1,6 +1,7 @@
 import { createPublicClient, http, decodeEventLog, getAddress, type AbiEvent, type Address, type Log } from "viem";
 import { baseSepolia } from "viem/chains";
 import { MilestoneStatus } from "../generated/prisma/enums";
+import type { Escrow, Milestone } from "../generated/prisma/client";
 import { prisma } from "./prisma";
 import { sendNotification } from "./mailer";
 import { escrowReadAbi } from "./abi/StablePayEscrow.read.abi";
@@ -935,19 +936,6 @@ async function backfillFromHistory(factoryAddress: `0x${string}`, startToken: nu
   }
 }
 
-/**
- * On startup, read on-chain state for every escrow that isn't in a terminal state
- * (CANCELLED) and sync the DB. This catches any events missed while the backend was down.
- */
-/**
- * Sync a list of escrows with on-chain state.
- * Called by the API before returning project lists.
- */
-/**
- * Sync a single escrow + its milestones with on-chain state.
- * Called lazily by the events endpoint so timeline is always up-to-date,
- * even if the real-time watchers missed events.
- */
 /** Dispute fields the contract zeroes in resubmitDuringDispute. */
 function clearedDisputeData() {
   return {
@@ -990,6 +978,196 @@ function submittedAtNeedsUpdate(existing: Date | null, chain: Date | null): bool
   return Math.abs(existing.getTime() - chain.getTime()) > 1000;
 }
 
+type EscrowWithMilestones = Escrow & { milestones: Milestone[] };
+
+/**
+ * Bring one escrow and its milestones in the DB in line with the chain.
+ * Shared by the startup catch-up and the per-project sync. Throws on RPC errors,
+ * so the caller decides whether to retry (catch-up) or only log (sync).
+ *
+ * `label` prefixes the log lines; `shouldStop` lets a listener restart cut it short.
+ */
+async function syncEscrowState(
+  escrow: EscrowWithMilestones,
+  label: string,
+  shouldStop: () => boolean = () => false,
+) {
+  const address = escrow.id as `0x${string}`;
+  // The public RPC, so these bulk reads don't eat the watchers' Alchemy rate limit
+  const rpc = backfillClient;
+
+  let sellerAccepted = false;
+  try {
+    sellerAccepted = await rpc.readContract({ address, abi: escrowReadAbi, functionName: "sellerAccepted" }) as boolean;
+  } catch {
+    // Old contract deployed before acceptProject() was added
+  }
+
+  const [funded, cancelled, milestoneCount, correctionWindowDays, autoApprovalDays, disputeTimeoutDays] = await Promise.all([
+    rpc.readContract({ address, abi: escrowReadAbi, functionName: "funded" }),
+    rpc.readContract({ address, abi: escrowReadAbi, functionName: "cancelled" }),
+    rpc.readContract({ address, abi: escrowReadAbi, functionName: "milestoneCount" }),
+    rpc.readContract({ address, abi: escrowReadAbi, functionName: "CORRECTION_WINDOW_DAYS" }).catch(() => null),
+    rpc.readContract({ address, abi: escrowReadAbi, functionName: "AUTO_APPROVAL_DAYS" }).catch(() => null),
+    rpc.readContract({ address, abi: escrowReadAbi, functionName: "DISPUTE_TIMEOUT_DAYS" }).catch(() => null),
+  ]) as [boolean, boolean, bigint, bigint | null, bigint | null, bigint | null];
+
+  // The contract only stores `cancelled`, not who cancelled — keep SELLER_REJECTED set by the listener
+  const onChainStatus = cancelled
+    ? (escrow.status === "SELLER_REJECTED" ? "SELLER_REJECTED" : "CANCELLED")
+    : funded ? "FUNDED" : sellerAccepted ? "SELLER_ACCEPTED" : "CREATED";
+
+  const updateData: Record<string, unknown> = {};
+  if (escrow.status !== onChainStatus) {
+    updateData.status = onChainStatus;
+  }
+
+  // Per-escrow timer values from the contract
+  if (correctionWindowDays != null && escrow.correctionWindowDays !== Number(correctionWindowDays)) {
+    updateData.correctionWindowDays = Number(correctionWindowDays);
+  }
+  if (autoApprovalDays != null && escrow.autoApprovalDays !== Number(autoApprovalDays)) {
+    updateData.autoApprovalDays = Number(autoApprovalDays);
+  }
+  if (disputeTimeoutDays != null && escrow.disputeTimeoutDays !== Number(disputeTimeoutDays)) {
+    updateData.disputeTimeoutDays = Number(disputeTimeoutDays);
+  }
+
+  if (cancelled && !escrow.cancelledAt) {
+    const cancelledAt = await readCancelledAt(rpc, address);
+    if (cancelledAt) updateData.cancelledAt = cancelledAt;
+  }
+
+  if (onChainStatus === "FUNDED" && !escrow.fundedAt) {
+    let fundedAt: Date = new Date();
+    try {
+      const logs = await rpc.getLogs({ address, event: fundedEvent, fromBlock: "earliest", toBlock: "latest" });
+      if (logs.length > 0 && logs[0].blockNumber != null) {
+        fundedAt = await blockDate(rpc, logs[0].blockNumber);
+      }
+    } catch { /* fall back to now */ }
+    updateData.fundedAt = fundedAt;
+  }
+
+  if (["SELLER_ACCEPTED", "FUNDED"].includes(onChainStatus) && !escrow.sellerAcceptedAt) {
+    updateData.sellerAcceptedAt = new Date();
+  }
+
+  if (Object.keys(updateData).length > 0) {
+    // Only write if the status is unchanged since we read it. If the listener
+    // wrote e.g. SELLER_REJECTED meanwhile, skip — the next sync retries.
+    const { count: updated } = await prisma.escrow.updateMany({ where: { id: escrow.id, status: escrow.status }, data: updateData });
+    if (updated > 0) console.log(`[${label}] ${address}: updated`, Object.keys(updateData));
+  }
+
+  for (let i = 0; i < Number(milestoneCount); i++) {
+    if (shouldStop()) {
+      console.warn(`[${label}] ${address} sync stopped mid-escrow by restart request`);
+      return;
+    }
+
+    const result = await rpc.readContract({
+      address,
+      abi: escrowReadAbi,
+      functionName: "milestones",
+      args: [BigInt(i)],
+    });
+    const rawOnChainStatus = MILESTONE_STATUS_MAP[Number(result[1])] ?? "PENDING";
+    const dbMilestone = escrow.milestones.find((m) => m.milestoneIndex === i);
+
+    // On-chain has no ESCALATED enum — preserve it when the DB flag is set
+    const onChainMilestoneStatus =
+      dbMilestone?.isEscalated && rawOnChainStatus === "DISPUTED"
+        ? "ESCALATED" as const
+        : rawOnChainStatus;
+
+    const submittedAtTs = Number(result[3]);
+    const disputeOpenedAtTs = Number(result[5]);
+    const submittedAtDate = submittedAtTs > 0 ? new Date(submittedAtTs * 1000) : null;
+    const disputeOpenedAtDate = disputeOpenedAtTs > 0 ? new Date(disputeOpenedAtTs * 1000) : null;
+
+    if (!dbMilestone) {
+      await prisma.milestone.create({
+        data: {
+          escrowAddress: escrow.id,
+          milestoneIndex: i,
+          amount: result[0].toString(),
+          status: rawOnChainStatus,
+          ...(submittedAtDate ? { submittedAt: submittedAtDate } : {}),
+          ...(disputeOpenedAtDate
+            ? { disputeOpenedAt: disputeOpenedAtDate, disputeOpenedBy: getAddress(result[6] as `0x${string}`) }
+            : {}),
+        },
+      });
+      console.log(`[${label}] ${address} milestone ${i}: created with status ${rawOnChainStatus}`);
+      continue;
+    }
+
+    const needsStatusUpdate = dbMilestone.status !== onChainMilestoneStatus;
+    const needsSubmittedAt = submittedAtNeedsUpdate(dbMilestone.submittedAt, submittedAtDate);
+    const needsDisputeAt = !dbMilestone.disputeOpenedAt && disputeOpenedAtDate;
+    const needsDisputeClear = disputeFieldsAreStale(dbMilestone, disputeOpenedAtTs);
+    const needsPaidAt = !dbMilestone.paidAt && ["PAID", "RESOLVED", "REFUNDED"].includes(onChainMilestoneStatus);
+    const needsAwardBackfill = (!dbMilestone.sellerAward || !dbMilestone.buyerAward)
+      && ["PAID", "REFUNDED", "RESOLVED"].includes(onChainMilestoneStatus)
+      && (dbMilestone.isEscalated || dbMilestone.disputeOpenedAt != null)
+      && !needsDisputeClear;
+
+    let sellerAwardValue: string | undefined;
+    let buyerAwardValue: string | undefined;
+    let correctedStatus: MilestoneStatus | undefined;
+    if (needsAwardBackfill) {
+      try {
+        const allDisputeLogs = await getLogsInChunks(rpc, address, disputeResolvedEvent);
+        const decoded = allDisputeLogs.map((l) =>
+          decodeEventLog({ abi: [disputeResolvedEvent], data: l.data, topics: l.topics }).args,
+        );
+        const match = decoded.find((args) => Number(args.milestoneIndex) === i);
+        if (match) {
+          const { sellerAward, buyerAward } = match;
+          sellerAwardValue = sellerAward.toString();
+          buyerAwardValue = buyerAward.toString();
+          correctedStatus = buyerAward === 0n ? "PAID" : sellerAward === 0n ? "REFUNDED" : "RESOLVED";
+          console.log(`[${label}] backfilled awards for ${address} milestone ${i}: seller=${sellerAwardValue}, buyer=${buyerAwardValue}, status=${correctedStatus}`);
+        } else {
+          console.warn(`[${label}] no DisputeResolved log found for ${address} milestone ${i}`);
+        }
+      } catch (err) {
+        console.error(`[${label}] award backfill failed for ${address} milestone ${i}:`, err);
+      }
+    }
+
+    const needsStatusCorrection = correctedStatus && dbMilestone.status !== correctedStatus;
+
+    if (needsStatusUpdate || needsSubmittedAt || needsDisputeAt || needsDisputeClear || needsPaidAt || needsAwardBackfill || needsStatusCorrection) {
+      await prisma.milestone.update({
+        where: milestoneKey(escrow.id, i),
+        data: {
+          ...(needsStatusUpdate && !needsStatusCorrection ? { status: onChainMilestoneStatus } : {}),
+          ...(needsStatusCorrection ? { status: correctedStatus } : {}),
+          ...(needsSubmittedAt ? { submittedAt: submittedAtDate } : {}),
+          ...(needsPaidAt ? { paidAt: new Date() } : {}),
+          ...(needsDisputeAt
+            ? { disputeOpenedAt: disputeOpenedAtDate, disputeOpenedBy: getAddress(result[6] as `0x${string}`) }
+            : {}),
+          ...(needsDisputeClear ? clearedDisputeData() : {}),
+          ...(sellerAwardValue ? { sellerAward: sellerAwardValue } : {}),
+          ...(buyerAwardValue ? { buyerAward: buyerAwardValue } : {}),
+        },
+      });
+      if (needsStatusUpdate) console.log(`[${label}] ${address} milestone ${i}: ${dbMilestone.status} → ${needsStatusCorrection ? correctedStatus : onChainMilestoneStatus}`);
+      if (needsSubmittedAt) console.log(`[${label}] ${address} milestone ${i}: repaired submittedAt`);
+      if (needsDisputeAt) console.log(`[${label}] ${address} milestone ${i}: repaired disputeOpenedAt`);
+      if (needsDisputeClear) console.log(`[${label}] ${address} milestone ${i}: cleared dispute after resubmit`);
+    }
+  }
+}
+
+/**
+ * Sync one escrow with the chain. Called by the API before it answers
+ * (events, milestones, admin), so the page is right even if a watcher missed
+ * an event. Seeds the escrow first if the DB has never seen it.
+ */
 export async function syncSingleEscrow(escrowId: string) {
   const address = escrowId as `0x${string}`;
 
@@ -1027,182 +1205,16 @@ export async function syncSingleEscrow(escrowId: string) {
   }
 
   try {
-    // Use public RPC for sync reads to avoid Alchemy rate limits
-    const syncClient = backfillClient;
-
-    let sellerAccepted = false;
-    try {
-      sellerAccepted = await syncClient.readContract({ address, abi: escrowReadAbi, functionName: "sellerAccepted" }) as boolean;
-    } catch (e) {
-      console.warn(`[sync] sellerAccepted read failed for ${address}:`, (e as Error).message?.slice(0, 100));
-    }
-
-    const [funded, cancelled, milestoneCount, correctionWindowDays, autoApprovalDays, disputeTimeoutDays] = await Promise.all([
-      syncClient.readContract({ address, abi: escrowReadAbi, functionName: "funded" }),
-      syncClient.readContract({ address, abi: escrowReadAbi, functionName: "cancelled" }),
-      syncClient.readContract({ address, abi: escrowReadAbi, functionName: "milestoneCount" }),
-      syncClient.readContract({ address, abi: escrowReadAbi, functionName: "CORRECTION_WINDOW_DAYS" }).catch(() => null),
-      syncClient.readContract({ address, abi: escrowReadAbi, functionName: "AUTO_APPROVAL_DAYS" }).catch(() => null),
-      syncClient.readContract({ address, abi: escrowReadAbi, functionName: "DISPUTE_TIMEOUT_DAYS" }).catch(() => null),
-    ]) as [boolean, boolean, bigint, bigint | null, bigint | null, bigint | null];
-
-    // The contract only stores `cancelled`, not who cancelled — keep SELLER_REJECTED set by the listener
-    const onChainStatus = cancelled ? (escrow.status === "SELLER_REJECTED" ? "SELLER_REJECTED" : "CANCELLED") : (funded as boolean) ? "FUNDED" : sellerAccepted ? "SELLER_ACCEPTED" : "CREATED";
-
-    // Build update payload
-    const updateData: Record<string, unknown> = {};
-
-    // Status change
-    if (escrow.status !== onChainStatus) {
-      updateData.status = onChainStatus;
-    }
-
-    // Sync per-escrow timer values from contract
-    if (correctionWindowDays != null && escrow.correctionWindowDays !== Number(correctionWindowDays)) {
-      updateData.correctionWindowDays = Number(correctionWindowDays);
-    }
-    if (autoApprovalDays != null && escrow.autoApprovalDays !== Number(autoApprovalDays)) {
-      updateData.autoApprovalDays = Number(autoApprovalDays);
-    }
-    if (disputeTimeoutDays != null && escrow.disputeTimeoutDays !== Number(disputeTimeoutDays)) {
-      updateData.disputeTimeoutDays = Number(disputeTimeoutDays);
-    }
-
-    if ((cancelled as boolean) && !escrow.cancelledAt) {
-      const cancelledAt = await readCancelledAt(syncClient, address);
-      if (cancelledAt) updateData.cancelledAt = cancelledAt;
-    }
-
-    // Repair fundedAt if missing
-    if (onChainStatus === "FUNDED" && !escrow.fundedAt) {
-      let fundedAt: Date = new Date();
-      try {
-        const logs = await syncClient.getLogs({ address, event: fundedEvent, fromBlock: "earliest", toBlock: "latest" });
-        if (logs.length > 0 && logs[0].blockNumber != null) {
-          fundedAt = await blockDate(syncClient, logs[0].blockNumber);
-        }
-      } catch { /* fall back to now */ }
-      updateData.fundedAt = fundedAt;
-    }
-
-    // Repair sellerAcceptedAt if seller has accepted but timestamp is missing
-    if (["SELLER_ACCEPTED", "FUNDED"].includes(onChainStatus) && !escrow.sellerAcceptedAt) {
-      updateData.sellerAcceptedAt = new Date();
-    }
-
-    if (Object.keys(updateData).length > 0) {
-      // Only write if the status is unchanged since we read it. If the listener
-      // wrote e.g. SELLER_REJECTED meanwhile, skip — the next sync retries.
-      const { count: updated } = await prisma.escrow.updateMany({ where: { id: escrow.id, status: escrow.status }, data: updateData });
-      if (updated > 0) console.log(`[sync] ${address}: updated`, Object.keys(updateData));
-    }
-
-    // Sync milestone statuses + timestamps
-    const count = Number(milestoneCount);
-    for (let i = 0; i < count; i++) {
-      let result: readonly [bigint, number, string, bigint, string, bigint, string];
-      try {
-        result = await syncClient.readContract({
-          address,
-          abi: escrowReadAbi,
-          functionName: "milestones",
-          args: [BigInt(i)],
-        }) as readonly [bigint, number, string, bigint, string, bigint, string];
-      } catch (msErr) {
-        console.error(`[sync] milestone ${i} read failed for ${address}:`, (msErr as Error).message?.slice(0, 120));
-        continue;
-      }
-      const rawOnChainStatus = MILESTONE_STATUS_MAP[Number(result[1])] ?? "PENDING";
-      const dbMilestone = escrow.milestones.find((m) => m.milestoneIndex === i);
-
-      // On-chain has no ESCALATED enum — preserve it when the DB flag is set
-      const onChainMilestoneStatus =
-        dbMilestone?.isEscalated && rawOnChainStatus === "DISPUTED"
-          ? "ESCALATED" as const
-          : rawOnChainStatus;
-
-      const submittedAtTs = Number(result[3]);
-      const disputeOpenedAtTs = Number(result[5]);
-      const submittedAtDate = submittedAtTs > 0 ? new Date(submittedAtTs * 1000) : null;
-      const disputeOpenedAtDate = disputeOpenedAtTs > 0 ? new Date(disputeOpenedAtTs * 1000) : null;
-
-      if (!dbMilestone) {
-        await prisma.milestone.create({
-          data: {
-            escrowAddress: escrow.id,
-            milestoneIndex: i,
-            amount: result[0].toString(),
-            status: rawOnChainStatus,
-            ...(submittedAtDate ? { submittedAt: submittedAtDate } : {}),
-            ...(disputeOpenedAtDate
-              ? { disputeOpenedAt: disputeOpenedAtDate, disputeOpenedBy: getAddress(result[6] as `0x${string}`) }
-              : {}),
-          },
-        });
-      } else {
-        const needsStatusUpdate = dbMilestone.status !== onChainMilestoneStatus;
-        const needsSubmittedAt = submittedAtNeedsUpdate(dbMilestone.submittedAt, submittedAtDate);
-        const needsDisputeAt = !dbMilestone.disputeOpenedAt && disputeOpenedAtDate;
-        const needsDisputeClear = disputeFieldsAreStale(dbMilestone, disputeOpenedAtTs);
-        const needsPaidAt = !dbMilestone.paidAt && ["PAID", "RESOLVED", "REFUNDED"].includes(onChainMilestoneStatus);
-        const needsAwardBackfill = (!dbMilestone.sellerAward || !dbMilestone.buyerAward)
-          && ["PAID", "REFUNDED", "RESOLVED"].includes(onChainMilestoneStatus)
-          && (dbMilestone.isEscalated || dbMilestone.disputeOpenedAt != null)
-          && !needsDisputeClear;
-
-        let sellerAwardValue: string | undefined;
-        let buyerAwardValue: string | undefined;
-        let correctedStatus: MilestoneStatus | undefined;
-        if (needsAwardBackfill) {
-          try {
-            const allDisputeLogs = await getLogsInChunks(backfillClient, escrow.id as `0x${string}`, disputeResolvedEvent);
-            const match = allDisputeLogs.find((l) => {
-              const { args } = decodeEventLog({ abi: [disputeResolvedEvent], data: l.data, topics: l.topics });
-              return Number((args as { milestoneIndex: bigint }).milestoneIndex) === i;
-            });
-            if (match) {
-              const { args } = decodeEventLog({ abi: [disputeResolvedEvent], data: match.data, topics: match.topics });
-              const sa = (args as { sellerAward: bigint }).sellerAward;
-              const ba = (args as { buyerAward: bigint }).buyerAward;
-              sellerAwardValue = sa.toString();
-              buyerAwardValue = ba.toString();
-              correctedStatus = ba === 0n ? "PAID" : sa === 0n ? "REFUNDED" : "RESOLVED";
-              console.log(`[sync] backfilled awards for ${escrow.id} milestone ${i}: seller=${sellerAwardValue}, buyer=${buyerAwardValue}, status=${correctedStatus}`);
-            } else {
-              console.warn(`[sync] no DisputeResolved log found for ${escrow.id} milestone ${i}`);
-            }
-          } catch (err) {
-            console.error(`[sync] award backfill failed for ${escrow.id} milestone ${i}:`, err);
-          }
-        }
-
-        const needsStatusCorrection = correctedStatus && dbMilestone.status !== correctedStatus;
-
-        if (needsStatusUpdate || needsSubmittedAt || needsDisputeAt || needsDisputeClear || needsPaidAt || needsAwardBackfill || needsStatusCorrection) {
-          await prisma.milestone.update({
-            where: { escrowAddress_milestoneIndex: { escrowAddress: escrow.id, milestoneIndex: i } },
-            data: {
-              ...(needsStatusUpdate && !needsStatusCorrection ? { status: onChainMilestoneStatus } : {}),
-              ...(needsStatusCorrection ? { status: correctedStatus } : {}),
-              ...(needsSubmittedAt ? { submittedAt: submittedAtDate } : {}),
-              ...(needsPaidAt ? { paidAt: new Date() } : {}),
-              ...(needsDisputeAt
-                ? { disputeOpenedAt: disputeOpenedAtDate, disputeOpenedBy: getAddress(result[6] as `0x${string}`) }
-                : {}),
-              ...(needsDisputeClear ? clearedDisputeData() : {}),
-              ...(sellerAwardValue ? { sellerAward: sellerAwardValue } : {}),
-              ...(buyerAwardValue ? { buyerAward: buyerAwardValue } : {}),
-            },
-          });
-          if (needsDisputeClear) console.log(`[sync] ${escrow.id} milestone ${i}: cleared dispute after resubmit`);
-        }
-      }
-    }
+    await syncEscrowState(escrow, "sync");
   } catch (err) {
     console.error(`[sync] FAILED for ${address}:`, err);
   }
 }
 
+/**
+ * On startup, sync every escrow that isn't cancelled, to catch events missed
+ * while the backend was down. Runs in small batches against the public RPC.
+ */
 async function catchUpOnChainState(startToken: number) {
   const escrows = await prisma.escrow.findMany({
     where: { status: { not: "CANCELLED" } },
@@ -1212,175 +1224,13 @@ async function catchUpOnChainState(startToken: number) {
   if (escrows.length === 0) return;
   console.log(`[catch-up] syncing ${escrows.length} escrows with on-chain state...`);
 
-  const processEscrow = async (escrow: (typeof escrows)[number]) => {
-    const address = escrow.id as `0x${string}`;
+  const processEscrow = async (escrow: EscrowWithMilestones) => {
     try {
-      // Use public RPC for bulk catch-up to avoid Alchemy rate limits
-      let sellerAccepted = false;
-      try {
-        sellerAccepted = await backfillClient.readContract({ address, abi: escrowReadAbi, functionName: "sellerAccepted" }) as boolean;
-      } catch {
-        // Old contract deployed before acceptProject() was added
-      }
-
-      const [funded, cancelled, milestoneCount, correctionWindowDays, autoApprovalDays, disputeTimeoutDays] = await Promise.all([
-        backfillClient.readContract({ address, abi: escrowReadAbi, functionName: "funded" }),
-        backfillClient.readContract({ address, abi: escrowReadAbi, functionName: "cancelled" }),
-        backfillClient.readContract({ address, abi: escrowReadAbi, functionName: "milestoneCount" }),
-        backfillClient.readContract({ address, abi: escrowReadAbi, functionName: "CORRECTION_WINDOW_DAYS" }).catch(() => null),
-        backfillClient.readContract({ address, abi: escrowReadAbi, functionName: "AUTO_APPROVAL_DAYS" }).catch(() => null),
-        backfillClient.readContract({ address, abi: escrowReadAbi, functionName: "DISPUTE_TIMEOUT_DAYS" }).catch(() => null),
-      ]) as [unknown, unknown, unknown, bigint | null, bigint | null, bigint | null];
-
-      // Sync escrow status
-      // The contract only stores `cancelled`, not who cancelled — keep SELLER_REJECTED set by the listener
-      const onChainStatus = cancelled ? (escrow.status === "SELLER_REJECTED" ? "SELLER_REJECTED" : "CANCELLED") : funded ? "FUNDED" : sellerAccepted ? "SELLER_ACCEPTED" : "CREATED";
-
-      // Build update payload
-      const updateData: Record<string, unknown> = {};
-
-      if (escrow.status !== onChainStatus) {
-        updateData.status = onChainStatus;
-      }
-
-      // Sync per-escrow timer values from contract
-      if (correctionWindowDays != null && escrow.correctionWindowDays !== Number(correctionWindowDays)) {
-        updateData.correctionWindowDays = Number(correctionWindowDays);
-      }
-      if (autoApprovalDays != null && escrow.autoApprovalDays !== Number(autoApprovalDays)) {
-        updateData.autoApprovalDays = Number(autoApprovalDays);
-      }
-      if (disputeTimeoutDays != null && escrow.disputeTimeoutDays !== Number(disputeTimeoutDays)) {
-        updateData.disputeTimeoutDays = Number(disputeTimeoutDays);
-      }
-
-      if (onChainStatus === "FUNDED" && !escrow.fundedAt) {
-        let fundedAt: Date = new Date();
-        try {
-          const logs = await backfillClient.getLogs({ address, event: fundedEvent, fromBlock: "earliest", toBlock: "latest" });
-          if (logs.length > 0 && logs[0].blockNumber != null) {
-            fundedAt = await blockDate(backfillClient, logs[0].blockNumber);
-          }
-        } catch { /* fall back to now */ }
-        updateData.fundedAt = fundedAt;
-      }
-
-      if (["SELLER_ACCEPTED", "FUNDED"].includes(onChainStatus) && !escrow.sellerAcceptedAt) {
-        updateData.sellerAcceptedAt = new Date();
-      }
-
-      if (Object.keys(updateData).length > 0) {
-        // Only write if the status is unchanged since we read it (see syncSingleEscrow)
-        const { count: updated } = await prisma.escrow.updateMany({ where: { id: address, status: escrow.status }, data: updateData });
-        if (updated > 0) console.log(`[catch-up] ${address}: updated`, Object.keys(updateData));
-      }
-
-      // Sync milestone statuses
-      const count = Number(milestoneCount);
-      for (let i = 0; i < count; i++) {
-        if (shouldAbortStartup(startToken)) {
-          console.warn(`[catch-up] ${address} sync stopped mid-escrow by restart request`);
-          return;
-        }
-
-        const result = await backfillClient.readContract({
-          address,
-          abi: escrowReadAbi,
-          functionName: "milestones",
-          args: [BigInt(i)],
-        });
-        const rawOnChainStatus = MILESTONE_STATUS_MAP[Number(result[1])] ?? "PENDING";
-        const dbMilestone = escrow.milestones.find((m) => m.milestoneIndex === i);
-
-        // On-chain has no ESCALATED enum — preserve it when the DB flag is set
-        const onChainMilestoneStatus =
-          dbMilestone?.isEscalated && rawOnChainStatus === "DISPUTED"
-            ? "ESCALATED" as const
-            : rawOnChainStatus;
-
-        const submittedAtTs = Number(result[3]);
-        const disputeOpenedAtTs = Number(result[5]);
-        const submittedAtDate = submittedAtTs > 0 ? new Date(submittedAtTs * 1000) : null;
-        const disputeOpenedAtDate = disputeOpenedAtTs > 0 ? new Date(disputeOpenedAtTs * 1000) : null;
-
-        if (!dbMilestone) {
-          await prisma.milestone.create({
-            data: {
-              escrowAddress: address,
-              milestoneIndex: i,
-              amount: result[0].toString(),
-              status: rawOnChainStatus,
-              ...(submittedAtDate ? { submittedAt: submittedAtDate } : {}),
-              ...(disputeOpenedAtDate
-                ? { disputeOpenedAt: disputeOpenedAtDate, disputeOpenedBy: getAddress(result[6] as `0x${string}`) }
-                : {}),
-            },
-          });
-          console.log(`[catch-up] ${address} milestone ${i}: created with status ${rawOnChainStatus}`);
-        } else {
-          const needsStatusUpdate = dbMilestone.status !== onChainMilestoneStatus;
-          const needsSubmittedAt = submittedAtNeedsUpdate(dbMilestone.submittedAt, submittedAtDate);
-          const needsDisputeAt = !dbMilestone.disputeOpenedAt && disputeOpenedAtDate;
-          const needsDisputeClear = disputeFieldsAreStale(dbMilestone, disputeOpenedAtTs);
-          const needsPaidAt = !dbMilestone.paidAt && ["PAID", "RESOLVED", "REFUNDED"].includes(onChainMilestoneStatus);
-          const needsAwardBackfill = (!dbMilestone.sellerAward || !dbMilestone.buyerAward)
-            && ["PAID", "REFUNDED", "RESOLVED"].includes(onChainMilestoneStatus)
-            && (dbMilestone.isEscalated || dbMilestone.disputeOpenedAt != null)
-            && !needsDisputeClear;
-
-          let sellerAwardValue: string | undefined;
-          let buyerAwardValue: string | undefined;
-          let correctedStatus: MilestoneStatus | undefined;
-          if (needsAwardBackfill) {
-            try {
-              const allDisputeLogs = await getLogsInChunks(backfillClient, address, disputeResolvedEvent);
-              const match = allDisputeLogs.find((l) => {
-                const { args } = decodeEventLog({ abi: [disputeResolvedEvent], data: l.data, topics: l.topics });
-                return Number((args as { milestoneIndex: bigint }).milestoneIndex) === i;
-              });
-              if (match) {
-                const { args } = decodeEventLog({ abi: [disputeResolvedEvent], data: match.data, topics: match.topics });
-                const sa = (args as { sellerAward: bigint }).sellerAward;
-                const ba = (args as { buyerAward: bigint }).buyerAward;
-                sellerAwardValue = sa.toString();
-                buyerAwardValue = ba.toString();
-                correctedStatus = ba === 0n ? "PAID" : sa === 0n ? "REFUNDED" : "RESOLVED";
-                console.log(`[catch-up] backfilled awards for ${address} milestone ${i}: seller=${sellerAwardValue}, buyer=${buyerAwardValue}, status=${correctedStatus}`);
-              }
-            } catch (err) {
-              console.error(`[catch-up] award backfill failed for ${address} milestone ${i}:`, err);
-            }
-          }
-
-          const needsStatusCorrection = correctedStatus && dbMilestone.status !== correctedStatus;
-
-          if (needsStatusUpdate || needsSubmittedAt || needsDisputeAt || needsDisputeClear || needsPaidAt || needsAwardBackfill || needsStatusCorrection) {
-            await prisma.milestone.update({
-              where: { escrowAddress_milestoneIndex: { escrowAddress: address, milestoneIndex: i } },
-              data: {
-                ...(needsStatusUpdate && !needsStatusCorrection ? { status: onChainMilestoneStatus } : {}),
-                ...(needsStatusCorrection ? { status: correctedStatus } : {}),
-                ...(needsSubmittedAt ? { submittedAt: submittedAtDate } : {}),
-                ...(needsPaidAt ? { paidAt: new Date() } : {}),
-                ...(needsDisputeAt
-                  ? { disputeOpenedAt: disputeOpenedAtDate, disputeOpenedBy: getAddress(result[6] as `0x${string}`) }
-                  : {}),
-                ...(needsDisputeClear ? clearedDisputeData() : {}),
-                ...(sellerAwardValue ? { sellerAward: sellerAwardValue } : {}),
-                ...(buyerAwardValue ? { buyerAward: buyerAwardValue } : {}),
-              },
-            });
-            if (needsStatusUpdate) console.log(`[catch-up] ${address} milestone ${i}: ${dbMilestone.status} → ${needsStatusCorrection ? correctedStatus : onChainMilestoneStatus}`);
-            if (needsSubmittedAt) console.log(`[catch-up] ${address} milestone ${i}: repaired submittedAt`);
-            if (needsDisputeAt) console.log(`[catch-up] ${address} milestone ${i}: repaired disputeOpenedAt`);
-            if (needsDisputeClear) console.log(`[catch-up] ${address} milestone ${i}: cleared dispute after resubmit`);
-          }
-        }
-      }
+      await syncEscrowState(escrow, "catch-up", () => shouldAbortStartup(startToken));
     } catch (err) {
       // Let the batch-level retry handle transient public-RPC rate limits.
       if (isRateLimitError(err)) throw err;
-      console.error(`[catch-up] failed for ${address}`, err);
+      console.error(`[catch-up] failed for ${escrow.id}`, err);
     }
   };
 
